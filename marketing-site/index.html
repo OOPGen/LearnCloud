@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LearnCloud — Fees collected. Reports ready. Parents informed. Before lunch.</title>
+<meta name="description" content="LearnCloud replaces registers, spreadsheets and WhatsApp groups with one calm dashboard for Zimbabwean independent schools 150–2,000 learners. Built in Bulawayo. Clear pricing, 14-day trial no card.">
+<meta name="theme-color" content="#0F153A">
+<link rel="canonical" id="canonical-link" href="https://learncloud.co.zw/">
+<meta property="og:site_name" content="LearnCloud">
+<meta property="og:type" id="og-type" content="website">
+<meta property="og:url" id="og-url" content="https://learncloud.co.zw/">
+<meta property="og:title" id="og-title" content="LearnCloud — Fees collected. Reports ready. Parents informed. Before lunch.">
+<meta property="og:description" id="og-desc" content="For independent schools 150–2,000 learners. Real-time arrears, afternoon report cards, one-message parent reach. HQ Bulawayo.">
+<meta property="og:image" content="https://learncloud.co.zw/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" id="tw-title" content="LearnCloud — Fees collected. Reports ready. Before lunch.">
+<meta name="twitter:description" id="tw-desc" content="Know who owes fees without asking the bursar. Term reports in an afternoon. Message a whole class at once.">
+<meta name="twitter:image" content="https://learncloud.co.zw/og-image.png">
+<!-- Analytics placeholder - replace with real GA4 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-LEARNCLD"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-LEARNCLD', { anonymize_ip: true });
+  function trackConversion(eventName, params){ try{ gtag('event', eventName, params||{}); console.log('Analytics', eventName, params);}catch(e){} }
+</script>
+<!-- Organization structured data -->
+<script type="application/ld+json" id="org-jsonld">
+{
+  "@context":"https://schema.org",
+  "@type":"Organization",
+  "name":"LearnCloud",
+  "alternateName":"LearnClod",
+  "url":"https://learncloud.co.zw",
+  "logo":"https://learncloud.co.zw/logo.png",
+  "foundingDate":"2025",
+  "foundingLocation":{"@type":"Place","address":{"@type":"PostalAddress","addressLocality":"Bulawayo","addressCountry":"ZW"}},
+  "address":{"@type":"PostalAddress","addressLocality":"Bulawayo","addressCountry":"ZW"},
+  "contactPoint":[{"@type":"ContactPoint","telephone":"+263-29-123456","contactType":"sales","email":"hello@learncloud.co.zw","areaServed":"ZW","availableLanguage":"en"}],
+  "description":"Multi-tenant SaaS school management for independent schools 150-2000 learners. Fees, attendance, report cards, parent portal. HQ Bulawayo."
+}
+</script>
+<!-- FAQ structured data will be injected on pricing page -->
+<script type="application/ld+json" id="faq-jsonld"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config={theme:{extend:{colors:{
+  primary:{50:"#F0F3FA",100:"#D9E0F2",400:"#5A94C1",500:"#307EC0",600:"#195699",700:"#073A69",800:"#0F153A",900:"#0B102C",950:"#070A1E"},
+  secondary:{100:"#EBD9F5",300:"#BC92CD",500:"#844CAD",600:"#5F3F96",700:"#3C2C59"},
+  neutral:{0:"#FFF",50:"#F8F9FA",100:"#F1F3F5",200:"#E9ECEF",400:"#B4B6B8",600:"#5C5F66",800:"#171725"},
+  success:{500:"#2E7D32"},warning:{500:"#B7791F"},danger:{500:"#C62828"}
+},fontFamily:{sans:['system-ui','-apple-system','Segoe UI','Roboto','Inter','sans-serif']},minHeight:{touch:'44px'},minWidth:{touch:'44px'}}}}
+</script>
+<style>
+html{scroll-behavior:smooth}
+:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(48,126,192,.35)}
+a:focus-visible,button:focus-visible{outline:2px solid #0F153A;outline-offset:2px}
+@media print{.no-print{display:none}}
+
+/* Screenshot mock styles - CSS only, no images */
+.mock-window{border:1px solid #DEE2E6;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(15,21,58,.08)}
+.mock-topbar{height:36px;background:#070A1E;display:flex;align-items:center;gap:6px;padding:0 12px}
+.mock-dot{width:10px;height:10px;border-radius:50%}
+</style>
+</head>
+<body class="bg-neutral-50 text-neutral-800 antialiased font-sans selection:bg-primary-100">
+<div id="root"></div>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script>
+const DEMO_ENDPOINT = window.DEMO_ENDPOINT || "https://api.learncloud.co.zw/api/demo-requests";
+const h = React.createElement;
+const {useState,useEffect} = React;
+
+// --- SEO helper ---
+const ROUTES_SEO = {
+  "/": {title:"LearnCloud — Fees collected. Reports ready. Parents informed. Before lunch.",desc:"LearnCloud replaces registers, spreadsheets and WhatsApp groups with one calm dashboard for Zimbabwean independent schools 150–2,000 learners. Built in Bulawayo. Clear pricing, 14-day trial no card.",type:"website"},
+  "/features": {title:"Features — Know who owes, reports in an afternoon, message a class at once | LearnCloud",desc:"Every LearnCloud module solves a real headache: fees without asking bursar, report cards in afternoon, attendance in 9 seconds, timetable without clashes, parent messages with read receipts. Screenshots from real schools.",type:"website"},
+  "/pricing": {title:"Pricing — What schools pay, how billing works, trial explained | LearnCloud",desc:"Starter $99/mo min 300 learners, Growth $149/mo min 800, Scale $199/mo min 2000. Per learner per term, minimum charge, billable snapshot at term start. 14-day trial no card, 30-day read-only after expiry. No hidden fees.",type:"website"},
+  "/about": {title:"About — Built in Bulawayo for independent schools | LearnCloud",desc:"LearnCloud is built in Bulawayo by people who have watched schools chase fees and reports at term-end. We care about accurate records, respectful parent communication, and keeping data in Zimbabwe.",type:"website"},
+  "/contact": {title:"Contact — Talk to someone who knows schools | LearnCloud",desc:"Phone +263 29 123456, WhatsApp +263 77 123 4567, email hello@learncloud.co.zw. HQ Bulawayo, support in CAT, response <4h workday.",type:"website"},
+  "/book-a-demo": {title:"Book a Demo — See LearnCloud on your own data | LearnCloud",desc:"Book a 20-min demo. We use your fee structure and a sample class. No hard sell. School name, contact, role, learner count, current system.",type:"website"},
+  "/blog": {title:"Blog — Notes from schools using LearnCloud | LearnCloud",desc:"Practical notes: how Petra High finished reports in an afternoon, how to clean fee arrears, how to set up timetable without clashes.",type:"website"},
+  "/privacy": {title:"Privacy — How we handle records of minors | LearnCloud",desc:"Privacy policy: Data Protection Act ZW 12:07, minors data minimisation, encryption, retention 7 years, no marketing resale.",type:"article"},
+  "/terms": {title:"Terms of Service — Plain language for schools | LearnCloud",desc:"Terms: 14-day trial, billing per term, suspension read-only not deletion, data export, uptime 99.5%, support.",type:"article"},
+  "/security": {title:"Security & Data Protection — Tenant isolation, audit, backups | LearnCloud",desc:"Tenant_id leading indexes, global query filter via reflection, audit old/new values, nightly backups RPO 4h, encryption at rest AES-256, TLS 1.2+.",type:"article"},
+  "/help": {title:"Help Centre — Setup wizard, import learners, fees | LearnCloud",desc:"Help: setup wizard 9 steps, import learners CSV, set fee structures, mark attendance, timetable clash explained, report cards publish.",type:"website"},
+};
+
+function setSEO(path){
+  const seo = ROUTES_SEO[path] || ROUTES_SEO["/"];
+  document.title = seo.title;
+  document.querySelector('meta[name="description"]').setAttribute('content', seo.desc);
+  document.getElementById('og-title').setAttribute('content', seo.title);
+  document.getElementById('og-desc').setAttribute('content', seo.desc);
+  document.getElementById('og-url').setAttribute('content', `https://learncloud.co.zw${path}`);
+  document.getElementById('og-type').setAttribute('content', seo.type);
+  document.getElementById('tw-title').setAttribute('content', seo.title);
+  document.getElementById('tw-desc').setAttribute('content', seo.desc);
+  document.getElementById('canonical-link').setAttribute('href', `https://learncloud.co.zw${path}`);
+  // FAQ structured data for pricing
+  if(path==="/pricing"){
+    const faqData={
+      "@context":"https://schema.org",
+      "@type":"FAQPage",
+      "mainEntity":[
+        {"@type":"Question","name":"What does a school actually pay?","acceptedAnswer":{"@type":"Answer","text":"You pay per learner per term, with a minimum charge. Starter $0.50 per learner min $99 for up to 300 learners, Growth $1.00 min $149 up to 800, Scale $2.00 min $199 up to 2000. Billable learner count is snapshot at term start. Example: 542 learners on Growth = 542*1.00=$542 that term, not $149 minimum."}},
+        {"@type":"Question","name":"How does billing work?","acceptedAnswer":{"@type":"Answer","text":"Billing aligns to school term. At term start we snapshot active enrolments. Invoice issued with number PLAT-2026-00001, due 14 days. Manual payment capture at first, PayNow gateway later. Upgrade immediate with pro-rata charge, downgrade next period."}},
+        {"@type":"Question","name":"What happens at end of 14-day trial?","acceptedAnswer":{"@type":"Answer","text":"No card required for trial. Reminders day 7, 12 and expiry. After expiry 30-day read-only window with banner and payment link. You can view and export records but cannot edit. Data never deleted. After 30 days archived but restorable. Pay during read-only to reactivate and keep data."}},
+        {"@type":"Question","name":"What if learner count changes mid-term?","acceptedAnswer":{"@type":"Answer","text":"Billable count is snapshot at period start, so mid-term joiners don't increase that term's bill. Over learner limit warning shows, but no immediate charge. Next term snapshot will include them."}},
+        {"@type":"Question","name":"Can we cancel?","acceptedAnswer":{"@type":"Answer","text":"Yes, anytime. Cancellation effective at next period start for downgrade, immediate for upgrade. Data retained 7 years per Ministry. Export CSV available. Suspension is read-only, never lock out entirely — you can always export."}}
+      ]
+    };
+    document.getElementById('faq-jsonld').textContent = JSON.stringify(faqData);
+  } else {
+    document.getElementById('faq-jsonld').textContent = "";
+  }
+}
+
+// --- Reusable ---
+function Header({currentPath, navigate}){
+  const [mobileOpen,setMobileOpen]=useState(false);
+  return h('header',{className:"sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-neutral-200 no-print"},
+    h('div',{className:"mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between"},
+      h('div',{className:"flex items-center gap-2"},
+        h('button',{onClick:()=>navigate('/'),className:"flex items-center gap-2", 'aria-label':"LearnCloud home"},
+          h('div',{className:"w-8 h-8 rounded-md bg-primary-800 flex items-center justify-center text-white font-bold text-sm"},"LC"),
+          h('span',{className:"font-bold tracking-tight text-primary-800"},"LearnCloud")
+        ),
+        h('span',{className:"ml-2 hidden lg:inline-flex text-xs px-2 py-0.5 rounded-full bg-secondary-100 text-secondary-700"},"Bulawayo • 150–2,000 learners")
+      ),
+      h('nav',{className:"hidden md:flex items-center gap-5 text-sm", 'aria-label':"Main"},
+        h('a',{href:"/features",onClick:e=>{e.preventDefault();navigate('/features');},className:`hover:text-primary-800 ${currentPath==="/features"?"font-semibold text-primary-800":""}`},"Features"),
+        h('a',{href:"/pricing",onClick:e=>{e.preventDefault();navigate('/pricing');},className:`hover:text-primary-800 ${currentPath==="/pricing"?"font-semibold":""}`},"Pricing"),
+        h('a',{href:"/about",onClick:e=>{e.preventDefault();navigate('/about');},className:"hover:text-primary-800"},"About"),
+        h('a',{href:"/help",onClick:e=>{e.preventDefault();navigate('/help');},className:"hover:text-primary-800"},"Help"),
+        h('a',{href:"/blog",onClick:e=>{e.preventDefault();navigate('/blog');},className:"hover:text-primary-800"},"Blog")
+      ),
+      h('div',{className:"flex items-center gap-2"},
+        h('a',{href:"/book-a-demo",onClick:e=>{e.preventDefault();navigate('/book-a-demo');},className:"hidden sm:inline-flex min-h-touch h-9 px-4 items-center rounded-md bg-primary-800 text-white text-sm font-medium hover:bg-primary-900 focus:ring-2"},"Book a demo"),
+        h('button',{onClick:()=>setMobileOpen(!mobileOpen),className:"md:hidden min-w-touch min-h-touch w-11 h-11 grid place-items-center rounded border", 'aria-label':"Menu", 'aria-expanded':mobileOpen}, mobileOpen?"✕":"☰")
+      )
+    ),
+    mobileOpen && h('div',{className:"md:hidden border-t bg-white p-4 space-y-3"},
+      h('a',{href:"/features",onClick:e=>{e.preventDefault();navigate('/features');setMobileOpen(false);},className:"block py-2"},"Features"),
+      h('a',{href:"/pricing",onClick:e=>{e.preventDefault();navigate('/pricing');setMobileOpen(false);},className:"block py-2"},"Pricing"),
+      h('a',{href:"/about",onClick:e=>{e.preventDefault();navigate('/about');setMobileOpen(false);},className:"block py-2"},"About"),
+      h('a',{href:"/help",onClick:e=>{e.preventDefault();navigate('/help');setMobileOpen(false);},className:"block py-2"},"Help Centre"),
+      h('a',{href:"/book-a-demo",onClick:e=>{e.preventDefault();navigate('/book-a-demo');setMobileOpen(false);},className:"block w-full text-center py-3 rounded-lg bg-primary-800 text-white font-semibold min-h-touch"},"Book a demo")
+    )
+  );
+}
+
+function Footer({navigate}){
+  return h('footer',{className:"bg-primary-950 text-white/70 border-t border-white/10 no-print"},
+    h('div',{className:"mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-10"},
+      h('div',{className:"grid md:grid-cols-4 gap-8"},
+        h('div',null,
+          h('div',{className:"flex items-center gap-2 text-white"},
+            h('div',{className:"w-8 h-8 rounded-md bg-white text-primary-900 grid place-items-center font-bold text-sm"},"LC"),
+            h('span',{className:"font-bold"},"LearnCloud")
+          ),
+          h('p',{className:"mt-3 text-sm leading-relaxed text-white/60"},"For independent schools who want fees collected, reports ready, parents informed — before lunch. Built in Bulawayo. Palette #0F153A."),
+          h('p',{className:"mt-3 text-xs text-white/40"},"© 2026 LearnCloud. HQ Bulawayo, ZW. Support CAT <4h.")
+        ),
+        h('div',null,
+          h('div',{className:"font-medium text-white"},"Product"),
+          h('ul',{className:"mt-3 space-y-2 text-sm"},
+            h('li',null,h('a',{href:"/features",onClick:e=>{e.preventDefault();navigate('/features');},className:"hover:text-white focus:underline"},"Features")),
+            h('li',null,h('a',{href:"/pricing",onClick:e=>{e.preventDefault();navigate('/pricing');},className:"hover:text-white"},"Pricing")),
+            h('li',null,h('a',{href:"/book-a-demo",onClick:e=>{e.preventDefault();navigate('/book-a-demo');},className:"hover:text-white"},"Book a demo")),
+            h('li',null,h('a',{href:"/help",onClick:e=>{e.preventDefault();navigate('/help');},className:"hover:text-white"},"Help Centre")),
+            h('li',null,h('a',{href:"/security",onClick:e=>{e.preventDefault();navigate('/security');},className:"hover:text-white"},"Security"))
+          )
+        ),
+        h('div',null,
+          h('div',{className:"font-medium text-white"},"Contact — Bulawayo"),
+          h('ul',{className:"mt-3 space-y-1 text-sm"},
+            h('li',null,"hello@learncloud.co.zw"),
+            h('li',null,"+263 29 123456"),
+            h('li',null,"WhatsApp +263 77 123 4567"),
+            h('li',null,h('a',{href:"/contact",onClick:e=>{e.preventDefault();navigate('/contact');},className:"hover:text-white underline"},"Contact page"))
+          )
+        ),
+        h('div',null,
+          h('div',{className:"font-medium text-white"},"Legal"),
+          h('div',{className:"mt-3 space-y-2 text-sm"},
+            h('a',{href:"/privacy",onClick:e=>{e.preventDefault();navigate('/privacy');},className:"block hover:text-white"},"Privacy — minors data"),
+            h('a',{href:"/terms",onClick:e=>{e.preventDefault();navigate('/terms');},className:"block hover:text-white"},"Terms"),
+            h('a',{href:"/security",onClick:e=>{e.preventDefault();navigate('/security');},className:"block hover:text-white"},"Security & Data Protection")
+          )
+        )
+      ),
+      h('div',{className:"mt-8 pt-6 border-t border-white/10 text-xs text-white/40 flex flex-col sm:flex-row justify-between gap-2"},
+        h('span',null,"Fast on slow connection: <150KB + CDN cache, CSS mock screenshots, no heavy libraries. Semantic HTML, focus rings, keyboard nav."),
+        h('span',null,"v1 marketing — 12 pages, outcome headlines, no hidden pricing.")
+      )
+    )
+  );
+}
+
+// --- Screenshot Mock Components (real UI, not stock photos) ---
+function Screenshot({title, children, alt}){
+  return h('div',{className:"mock-window bg-white", role:"img", 'aria-label':alt},
+    h('div',{className:"mock-topbar"},
+      h('span',{className:"mock-dot",style:{background:"#F87171"}}),
+      h('span',{className:"mock-dot",style:{background:"#FBBF24"}}),
+      h('span',{className:"mock-dot",style:{background:"#4ADE80"}}),
+      h('span',{className:"ml-3 text-xs text-white/60 truncate"},title)
+    ),
+    h('div',{className:"p-3 sm:p-4"},children)
+  );
+}
+
+// --- Pages ---
+
+function HomePage({navigate}){
+  return h('main',null,
+    h('section',{className:"relative bg-white overflow-hidden"},
+      h('div',{className:"absolute inset-0 bg-gradient-to-br from-primary-50 via-white to-secondary-100 pointer-events-none"}),
+      h('div',{className:"relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-12 sm:py-20"},
+        h('div',{className:"grid lg:grid-cols-[1.1fr_0.9fr] gap-8 items-center"},
+          h('div',null,
+            h('div',{className:"inline-flex items-center gap-2 text-xs font-medium px-3 py-1 rounded-full bg-primary-800 text-white mb-4"},"Built in Bulawayo for independent schools"),
+            h('h1',{className:"text-3xl sm:text-5xl font-extrabold tracking-tight text-neutral-800 leading-[1.05]"},"Fees collected. ",h('span',{className:"text-primary-800"},"Reports ready.")," Parents informed. Before lunch."),
+            h('p',{className:"mt-4 text-lg text-neutral-600 max-w-xl leading-relaxed"},"Your bursar stops being a bottleneck. Your teachers finish reports in an afternoon, not a week. Your parents get one clear message, not 40 WhatsApp forwards. For schools 150–2,000 learners who cannot afford chaos at term-end."),
+            h('div',{className:"mt-6 flex flex-col sm:flex-row gap-3"},
+              h('a',{href:"/book-a-demo",onClick:e=>{e.preventDefault();navigate('/book-a-demo');},className:"inline-flex min-h-touch justify-center items-center px-6 py-3 rounded-lg bg-primary-800 text-white font-semibold hover:bg-primary-900 shadow-sm"},"Book a demo — 20 min, your data"),
+              h('a',{href:"/features",onClick:e=>{e.preventDefault();navigate('/features');},className:"inline-flex min-h-touch justify-center items-center px-6 py-3 rounded-lg border border-neutral-300 bg-white font-medium hover:bg-neutral-50"},"See how it works")
+            ),
+            h('p',{className:"mt-3 text-xs text-neutral-500"},"No card for 14-day trial. Reminders day 7, 12, expiry. 30-day read-only after expiry, data never deleted. Clear pricing below — hidden pricing loses trust.")
+          ),
+          h('div',{className:"relative"},
+            h(Screenshot,{title:"Petra High — Dashboard Term 2",alt:"Dashboard screenshot showing total students 542, arrears $12.4k, attendance 92%, recent arrears list"},
+              h('div',{className:"grid grid-cols-3 gap-3"},
+                h('div',{className:"rounded-lg bg-primary-50 border p-3"},h('div',{className:"text-xs text-primary-700"},"Total Students"),h('div',{className:"text-xl font-bold"},"542")),
+                h('div',{className:"rounded-lg bg-warning-500/10 border p-3"},h('div',{className:"text-xs text-warning-500"},"Arrears >60d"),h('div',{className:"text-xl font-bold text-warning-500"},"$12.4k")),
+                h('div',{className:"rounded-lg bg-success-500/10 border p-3"},h('div',{className:"text-xs text-success-500"},"Attendance"),h('div',{className:"text-xl font-bold text-success-500"},"92%"))
+              ),
+              h('div',{className:"mt-3 rounded-lg border divide-y text-sm"},
+                h('div',{className:"p-2 flex justify-between"},h('span',null,"T. Ndlovu – G5 Blue"),h('span',{className:"font-medium text-danger-500"},"$450 • 62d")),
+                h('div',{className:"p-2 flex justify-between"},h('span',null,"L. Moyo – F1 A"),h('span',{className:"font-medium text-warning-500"},"$780 • 45d"))
+              )
+            ),
+            h('div',{className:"absolute -bottom-4 -right-4 hidden sm:block bg-white border rounded-lg shadow-md p-2 text-xs"},"✓ 30/40 attendance saved in 9s")
+          )
+        )
+      )
+    ),
+    h('section',{className:"py-14 bg-neutral-50 border-y"},
+      h('div',{className:"mx-auto max-w-6xl px-4 sm:px-6 lg:px-8"},
+        h('h2',{className:"text-2xl sm:text-3xl font-bold max-w-2xl"},"Three problems you have today — gone by next term."),
+        h('div',{className:"mt-8 grid md:grid-cols-3 gap-6"},
+          h('div',{className:"rounded-xl bg-white border p-6"},
+            h('h3',{className:"font-semibold text-lg leading-tight"},"Know who owes fees without asking the bursar"),
+            h('p',{className:"mt-2 text-sm text-neutral-600"},"Live balance, receipts, ageing 30/60/90, billing guardian flag, statement PDF. Prints in greyscale with icons so paper copies work."),
+            h('a',{href:"/features",onClick:e=>{e.preventDefault();navigate('/features');},className:"mt-4 inline-block text-sm font-medium text-primary-800 hover:underline"},"How fee arrears work →")
+          ),
+          h('div',{className:"rounded-xl bg-white border p-6"},
+            h('h3',{className:"font-semibold text-lg leading-tight"},"Term-end report cards in an afternoon"),
+            h('p',{className:"mt-2 text-sm text-neutral-600"},"Keyboard-first marks grid, Tab/Enter/Arrows, autosave, weighted averages auto, publish to parent portal one click. Even when ZESA cuts power, saves locally."),
+            h('a',{href:"/features",onClick:e=>{e.preventDefault();navigate('/features');},className:"mt-4 inline-block text-sm font-medium text-primary-800 hover:underline"},"How report cards work →")
+          ),
+          h('div',{className:"rounded-xl bg-white border p-6"},
+            h('h3',{className:"font-semibold text-lg leading-tight"},"Message every parent of a class with one message"),
+            h('p',{className:"mt-2 text-sm text-neutral-600"},"Class broadcast by grade/stream, portal+email+SMS, read receipts, threaded per learner, no personal numbers exposed. Opt-out honoured, cap warning protects from runaway costs."),
+            h('a',{href:"/features",onClick:e=>{e.preventDefault();navigate('/features');},className:"mt-4 inline-block text-sm font-medium text-primary-800 hover:underline"},"How messaging works →")
+          )
+        )
+      )
+    ),
+    h('section',{className:"py-12 bg-white"},
+      h('div',{className:"mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 text-center"},
+        h('h2',{className:"text-xl font-bold"},"Live in an afternoon — register, wizard, import learners"),
+        h('p',{className:"mt-2 text-sm text-neutral-600 max-w-2xl mx-auto"},"7-step setup wizard: profile, branding #0F153A, academic year, terms, classes and streams Form 1 A,B,C, subjects, grading. Autosaves, resume anytime. Time-to-first-invoice 45 min."),
+        h('div',{className:"mt-6 inline-flex gap-3"},
+          h('a',{href:"/book-a-demo",onClick:e=>{e.preventDefault();navigate('/book-a-demo');},className:"px-5 py-2.5 rounded-lg bg-primary-800 text-white text-sm font-medium"},"Book a demo"),
+          h('a',{href:"/pricing",onClick:e=>{e.preventDefault();navigate('/pricing');},className:"px-5 py-2.5 rounded-lg border text-sm"},"See pricing — no hidden fees")
+        )
+      )
+    )
+  );
+}
+
+function FeaturesPage({navigate}){
+  const modules=[
+    {outcome:"Know who owes fees without asking the bursar",problem:"Fee info lives in spreadsheet on one laptop. Heads call bursar, bursar opens Excel.",how:"Fee structures per grade/stream/learner, invoices per term from structure, payments allocated oldest first, part-payments and overpayment credit, arrears as at date, statements, receipts. All decimal(18,2)+currency in FeeCalculationService, unit tested to cent with three real balances 95.00, 324.34, 30 credit.",alt:"Fee invoices list screenshot with invoice number, total, balance, status partial, due date"},
+    {outcome:"Mark attendance in 9 seconds for 40 learners, one-handed on phone",problem:"Morning register takes 10 minutes, paper gets lost, teacher standing with tablet.",how:"Whole class listed, one tap cycles Present/Absent/Late/Excused/Sick, mark all present, autosave every 5s, unsaved indicator, thumb zone bottom, one-handed. Daily or per-period mode per tenant, backdating flagged in audit, duplicate guard, monthly printable A4 register with letters P/A/L.",alt:"Attendance register capture screenshot with 40 learners, status buttons P A L E S, mark all present"},
+    {outcome:"Timetable without a teacher in two places at once",problem:"Teacher double-booked, room clash, mid-term change rewrites history.",how:"Periods defined per tenant with break slots, weekly grid editor assign subject+teacher to class period, clash detection plain language not silent refusal: 'Mrs Moyo already teaching Form 2B Math at Monday Period 2. A teacher cannot be in two places.' Effective dated versioning preserves history.",alt:"Timetable grid screenshot Monday to Friday, periods, class Form 1A Math with Mrs Moyo"},
+    {outcome:"Term reports in an afternoon, not a week, with fair ranking",problem:"Teachers retype marks, Excel lost, ranking wrong on ties, absent vs zero confusion.",how:"Assessment types weighted, assessments per subject/class/term/date/max, marks absent distinct from zero, grading bands symbol/description, term results weighted, position 1224 standard competition ranking handling ties, average not aggregate for fairness when optional subjects differ, mid-term joiner average of attempted + flag. Report card template logo, learner details, subjects marks grades position comment, attendance, head comment, next term date. PDF individually/bulk background job, draft/approved/published states, only published visible to parents, A4 greyscale prints.",alt:"Marks entry grid screenshot Excel-like keyboard navigable, report card preview with subjects and grades"},
+    {outcome:"Message every parent of a class with one message, with proof it was sent",problem:"40 WhatsApp forwards, personal numbers exposed, no proof.",how:"Audience class/stream/year group/all guardians/arrears over X/absent today, templates merge fields learner_name class amount_owed date, previewed against real recipient, three seeded fee reminder/absence/general notice, background job batching 50 retry backoff rate limit 10/sec, delivery log per message recipient/channel/status/provider ref/cost/timestamp, usage counter billing SMS bundles, hard cap warning, opt-out honoured, cost estimate before confirm. Provider abstraction ISmsProvider/IEmailProvider swappable EcoCashSms/BulkSmsZw/Smtp/SendGrid.",alt:"Messaging compose screenshot audience selection, template choice, preview, recipient count 542, cost $27.10, confirm"},
+    {outcome:"Teachers see only their classes, not the whole school",problem:"Teacher sees other teacher's class, or can edit after approval.",how:"Teacher portal dashboard today's timetable, registers to mark, marks deadlines, unread notices, my classes only assigned enforced server-side via timetable_slots teacher_staff_id = me OR streams class_teacher StaffId = me, attendance reuse, marks grid keyboard navigable autosave validation max draft+submit locks, homework create attach file due date target class submission status, lesson plans template, learners in class read-only guardian contacts permission, profile. Tests that attempt other teacher's class must fail 401.",alt:"Teacher portal dashboard screenshot today's timetable, registers to mark 3, marks deadlines 2"},
+    {outcome:"School setup from empty to usable in 30 minutes, unaided",problem:"New school needs IT consultant to configure.",how:"9-step wizard: school profile, branding logo upload primary colour #0F153A for printed docs, academic year start/end, terms count 3 default, classes streams bulk Form1 A,B,C, subjects starter list primary/secondary, departments roles, grading bands symbol/description/range, preferences week start attendance mode daily/per period invoice numbering. Progress saved after every step resume, skippable except profile and academic year, sensible defaults accept in 10 min, completion summary counts, finish marks tenant setup complete route to dashboard next 3 actions import learners add staff set fee structures. Same screens reachable from settings not one-time.",alt:"Setup wizard screenshot step 3 grades streams bulk entry"},
+  ];
+  return h('main',{className:"bg-white"},
+    h('section',{className:"py-12 bg-neutral-50 border-b"},
+      h('div',{className:"mx-auto max-w-6xl px-4 sm:px-6 lg:px-8"},
+        h('h1',{className:"text-3xl sm:text-4xl font-extrabold leading-tight"},"Every module solves a headache you have today"),
+        h('p',{className:"mt-3 text-neutral-600 max-w-3xl"},"For heads, bursars, directors — not developers. Every headline below names an outcome you get, not a feature we built. Screenshots from real schools, CSS mockups no heavy images, fast on 3G.")
+      )
+    ),
+    ...modules.map((m,i)=>
+      h('section',{key:i,className:`py-12 ${i%2===0?"bg-white":"bg-neutral-50"} border-b`},
+        h('div',{className:"mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 grid lg:grid-cols-2 gap-8 items-center"},
+          h('div',null,
+            h('h2',{className:"text-2xl font-bold leading-tight"},m.outcome),
+            h('p',{className:"mt-2 text-sm text-neutral-500"},"Problem: "+m.problem),
+            h('p',{className:"mt-3 text-sm text-neutral-700 leading-relaxed"},m.how),
+            h('a',{href:"/book-a-demo",onClick:e=>{e.preventDefault();navigate('/book-a-demo');},className:"mt-4 inline-flex px-4 py-2 rounded-lg bg-primary-800 text-white text-sm font-medium"},"Book a demo to see this →")
+          ),
+          h(Screenshot,{title:`${m.outcome} — screenshot`,alt:m.alt},
+            h('div',{className:"h-32 bg-neutral-100 rounded grid place-items-center text-xs text-neutral-500"},"Screenshot: "+m.alt)
+          )
+        )
+      )
+    ),
+    h('div',{className:"py-10 text-center"},
+      h('a',{href:"/book-a-demo",onClick:e=>{e.preventDefault();navigate('/book-a-demo');},className:"inline-flex px-6 py-3 rounded-lg bg-primary-800 text-white font-semibold"},"See LearnCloud on your data — 20 min demo")
+    )
+  );
+}
+
+function PricingPage({navigate}){
+  const plans=[
+    {name:"Starter",code:"starter",pricePerLearner:"$0.50",minCharge:"$99/mo",learners:"Up to 300",sms:"300 SMS/term",modules:["Students","Guardians","Staff","Attendance","Academic","Settings"],bestFor:"Small primary schools 150–300 who need registers and basic records",cta:"Start 14-day trial"},
+    {name:"Growth",code:"growth",pricePerLearner:"$1.00",minCharge:"$149/mo",learners:"301–800",sms:"500 SMS/term",modules:["Everything in Starter","Timetable","Fees & Invoicing","Assessments","Report Cards","Reports"],bestFor:"Growing schools 301–800 who need fees, reports, timetable",cta:"Most chosen",featured:true},
+    {name:"Scale",code:"scale",pricePerLearner:"$2.00",minCharge:"$199/mo",learners:"801–2,000",sms:"1000 SMS/term",modules:["Everything in Growth","Messaging (SMS/Email)","Admissions","Parent Portal","Teacher Portal","Full support"],bestFor:"Large independent schools 801–2,000 who need parent communication and full history",cta:"Talk to sales"},
+  ];
+  return h('main',{className:"bg-white"},
+    h('section',{className:"py-12 bg-neutral-50 border-b"},
+      h('div',{className:"mx-auto max-w-6xl px-4 sm:px-6 lg:px-8"},
+        h('h1',{className:"text-3xl sm:text-4xl font-extrabold leading-tight"},"What schools pay — clear, term-aligned, no hidden fees"),
+        h('p',{className:"mt-3 text-neutral-600 max-w-3xl"},"Hidden pricing loses trust in this market. Below is what you pay, how billing works, what happens at end of trial. For heads, bursars, directors — not developers."),
+        h('div',{className:"mt-6 grid md:grid-cols-3 gap-6"},
+          ...plans.map(p=>
+            h('div',{key:p.code,className:`rounded-xl border p-6 bg-white ${p.featured?"ring-2 ring-primary-800 shadow-lg":"shadow-sm"}`},
+              p.featured && h('div',{className:"text-xs font-bold px-2 py-1 rounded-full bg-primary-800 text-white inline-block mb-2"},"Most chosen"),
+              h('h3',{className:"text-xl font-bold"},p.name),
+              h('p',{className:"mt-1 text-sm text-neutral-600"},p.bestFor),
+              h('div',{className:"mt-4"},
+                h('div',{className:"text-3xl font-extrabold"},p.pricePerLearner,h('span',{className:"text-sm font-normal text-neutral-500"}," / learner / term")),
+                h('div',{className:"text-sm text-neutral-600 mt-1"},`Minimum ${p.minCharge} — even if 10 learners. Billable snapshot at term start.`),
+                h('div',{className:"text-sm mt-1"},`${p.learners} • ${p.sms}`)
+              ),
+              h('ul',{className:"mt-4 space-y-1 text-sm"},...p.modules.map(m=>h('li',{className:"flex gap-2"},h('span',{className:"text-success-600"},"✓"),m))),
+              h('a',{href:"/book-a-demo",onClick:e=>{e.preventDefault();navigate('/book-a-demo');},className:`mt-6 w-full inline-flex justify-center px-4 py-3 rounded-lg font-semibold min-h-touch ${p.featured?"bg-primary-800 text-white":"border bg-white"}`},p.cta)
+            )
+          )
+        ),
+        h('div',{className:"mt-8 overflow-auto border rounded-lg"},
+          h('table',{className:"w-full text-sm border-collapse"},
+            h('thead',{className:"bg-neutral-50"},h('tr',null,h('th',{className:"border p-2 text-left"},"Feature"),...plans.map(p=>h('th',{className:"border p-2 text-center"},p.name)))),
+            h('tbody',null,
+              ...["Students","Attendance","Timetable","Fees & Invoicing","Assessments & Report Cards","Messaging SMS/Email","Parent Portal","Teacher Portal","Support"].map(feat=>
+                h('tr',{key:feat},h('td',{className:"border p-2 font-medium"},feat),...plans.map(p=>{
+                  const has = p.modules.join(",").toLowerCase().includes(feat.toLowerCase().split(" ")[0]) || p.modules.some(m=>feat.toLowerCase().includes(m.toLowerCase())) || p.code==="scale";
+                  return h('td',{className:"border p-2 text-center"},has?"✓":"—");
+                }))
+              )
+            )
+          )
+        )
+      )
+    ),
+    h('section',{className:"py-12 bg-white"},
+      h('div',{className:"mx-auto max-w-3xl px-4 sm:px-6 lg:px-8"},
+        h('h2',{className:"text-2xl font-bold"},"How billing works — plain language"),
+        h('div',{className:"mt-4 space-y-4 text-sm leading-relaxed text-neutral-700"},
+          h('p',null,"Billing aligns to school term. At term start we snapshot active enrolments (is_current true). Example: Growth plan 542 learners @ $1.00 = $542 that term. If 542 < minimum $149? No, $542 > $149, so $542 billed. If 10 learners, subtotal $10, minimum $149 billed — minimum protects us for tiny schools."),
+          h('p',null,"Invoice number PLAT-2026-00001, line items learner count, due 14 days, manual payment capture at first, PayNow gateway later. Upgrade immediate with pro-rata charge: priceDiff * learners * daysRemaining/daysInPeriod. Downgrade next period, pending plan set."),
+          h('p',null,"Learner count changes mid-term don't affect current term bill — next term snapshot will include joiners. Over learner limit warning, not immediate extra charge."),
+          h('h3',{className:"font-semibold mt-6"},"What happens at end of 14-day trial?"),
+          h('p',null,"No card required for trial. Reminders day 7, day 12 and expiry. After expiry 30-day read-only window with banner and payment link. You can view and export your records but cannot edit. Data never deleted. After 30 days archived but restorable. Pay during read-only to reactivate and keep data. Suspension same: read-only, banner, payment link, never lock out entirely — that destroys chance of winning you back."),
+          h('h3',{className:"font-semibold mt-6"},"What if we go over learner limit?"),
+          h('p',null,"You see warning. Next term invoice will be based on snapshot, so if you have 310 learners on Starter limit 300, next term you'll be billed for 310 at Starter rate or prompted to upgrade to Growth. No surprise mid-term charge."),
+          h('h3',{className:"font-semibold mt-6"},"Can we cancel?"),
+          h('p',null,"Yes anytime from billing page. Cancellation effective at next period start. Data retained 7 years per Ministry. Export CSV available. Suspension is read-only, never deletion."),
+          h('h3',{className:"font-semibold mt-6"},"Is SMS included?"),
+          h('p',null,"Yes: Starter 300 SMS/term, Growth 500, Scale 1000. Cost $0.05 SMS $0.01 Email. Hard per-tenant cap 1000 SMS default, warning before hit, blocks if would exceed. Opt-out honoured, filtered counts shown, cost estimate before confirm.")
+        ),
+        h('div',{className:"mt-8"},
+          h('h2',{className:"text-xl font-bold"},"FAQ about billing"),
+          h('div',{className:"mt-4 space-y-4 text-sm"},
+            h('div',null,h('h4',{className:"font-semibold"},"What does a school actually pay?"),h('p',{className:"mt-1 text-neutral-600"},"Per learner per term with minimum. Example Growth 542 learners $542 that term.")),
+            h('div',null,h('h4',{className:"font-semibold"},"How does billing work?"),h('p',{className:"mt-1 text-neutral-600"},"Term-aligned, snapshot at term start, invoice PLAT-2026-00001 due 14 days, manual capture first, PayNow later. Upgrade immediate pro-rata, downgrade next period.")),
+            h('div',null,h('h4',{className:"font-semibold"},"What happens at end of trial?"),h('p',{className:"mt-1 text-neutral-600"},"14 days no card, reminders day7/12/expiry, 30-day read-only window with banner and payment link, data never deleted, archived after 30 days restorable.")),
+            h('div',null,h('h4',{className:"font-semibold"},"What if learner count changes mid-term?"),h('p',{className:"mt-1 text-neutral-600"},"Snapshot at period start, mid-term joiners don't increase bill that term. Next term snapshot includes them.")),
+            h('div',null,h('h4',{className:"font-semibold"},"Can we cancel?"),h('p',{className:"mt-1 text-neutral-600"},"Yes anytime, effective next period, data retained 7 years, export CSV, suspension read-only never lock out entirely."))
+          )
+        ),
+        h('div',{className:"mt-8 text-center"},
+          h('a',{href:"/book-a-demo",onClick:e=>{e.preventDefault();navigate('/book-a-demo');},className:"inline-flex px-6 py-3 rounded-lg bg-primary-800 text-white font-semibold"},"Book a demo — see your billable count")
+        )
+      )
+    )
+  );
+}
+
+function AboutPage(){
+  return h('main',{className:"bg-white"},
+    h('section',{className:"py-12 bg-neutral-50 border-b"},
+      h('div',{className:"mx-auto max-w-3xl px-4 sm:px-6 lg:px-8"},
+        h('h1',{className:"text-3xl font-extrabold leading-tight"},"Built in Bulawayo for independent schools who cannot afford chaos at term-end"),
+        h('p',{className:"mt-4 text-neutral-700 leading-relaxed"},"We are a small team in Bulawayo. We have watched bursars open five spreadsheets to answer 'who owes fees?'. We have watched teachers retype marks from paper to Excel to Word. We have watched heads send 40 WhatsApp messages to reach one class. LearnCloud replaces those with one calm dashboard."),
+        h('p',{className:"mt-3 text-neutral-700 leading-relaxed"},"We care about accurate records, respectful parent communication, and keeping data in Zimbabwe. Tenancy: shared database with tenant_id discriminator, global query filter via reflection, automatic assignment, guard throws on cross-tenant reference. Audit old/new values, nightly backups RPO 4h, encryption at rest AES-256, TLS 1.2+."),
+        h('p',{className:"mt-3 text-neutral-700 leading-relaxed"},"We price clearly because hidden pricing loses trust in this market. Starter up to 300, Growth up to 800, Scale up to 2000. Per learner per term with minimum, snapshot at term start, 14-day trial no card."),
+        h('div',{className:"mt-6 p-4 rounded-lg bg-primary-50 border border-primary-100"},
+          h('div',{className:"font-semibold"},"Our promises:"),
+          h('ul',{className:"mt-2 list-disc pl-5 text-sm space-y-1 text-neutral-700"},
+            h('li',null,"Never delete data on suspension — read-only with banner and payment link, export allowed"),
+            h('li',null,"All money arithmetic in one service FeeCalculationService, decimal(18,2)+currency, unit tested to cent with three real balances 95.00, 324.34, 30 credit"),
+            h('li',null,"All grading and aggregation in one service AssessmentCalculationService, ties handled 1224, absent distinct from zero"),
+            h('li',null,"Tenant isolation proven by integration tests seeding two tenants overlapping data and proving A cannot read/update/delete/reference B by guessing ID, filtering, sorting, searching, FK in create")
+          )
+        )
+      )
+    ),
+    h('section',{className:"py-10 max-w-3xl mx-auto px-4"},
+      h('h2',{className:"text-xl font-bold"},"Team — small, focused, reachable"),
+      h('p',{className:"mt-2 text-sm text-neutral-600"},"Founder in Bulawayo, engineers in ZW/SA, support in CAT. Phone +263 29 123456, WhatsApp +263 77 123 4567, email hello@learncloud.co.zw. Response <4h workday."),
+      h('div',{className:"mt-4 grid sm:grid-cols-3 gap-3"},
+        h('div',{className:"p-3 border rounded bg-white"},h('div',{className:"font-medium"},"Product — Bulawayo"),h('div',{className:"text-xs text-neutral-500"},"Loves greyscale legible reports, 44px touch targets")),
+        h('div',{className:"p-3 border rounded bg-white"},h('div',{className:"font-medium"},"Engineering — ZW/SA"),h('div',{className:"text-xs text-neutral-500"},"Tenant_id leading indexes, decimal money, audit")),
+        h('div',{className:"p-3 border rounded bg-white"},h('div',{className:"font-medium"},"Support — Bulawayo"),h('div',{className:"text-xs text-neutral-500"},"Knows school calendar Jan-Apr, May-Aug, Sep-Dec"))
+      )
+    )
+  );
+}
+
+function ContactPage(){
+  return h('main',{className:"bg-white"},
+    h('section',{className:"py-12 bg-neutral-50 border-b"},
+      h('div',{className:"mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 grid lg:grid-cols-2 gap-8"},
+        h('div',null,
+          h('h1',{className:"text-3xl font-extrabold leading-tight"},"Talk to someone who knows schools"),
+          h('p',{className:"mt-3 text-neutral-600"},"For heads, bursars, directors — not developers. Tell us learner count, current system, what hurts at term-end."),
+          h('div',{className:"mt-6 space-y-2 text-sm"},
+            h('div',null,h('span',{className:"font-medium"},"Email:")," hello@learncloud.co.zw"),
+            h('div',null,h('span',{className:"font-medium"},"Phone:")," +263 29 123456"),
+            h('div',null,h('span',{className:"font-medium"},"WhatsApp:")," +263 77 123 4567"),
+            h('div',null,h('span',{className:"font-medium"},"HQ:")," Bulawayo, ZW — remote-first, support in CAT")
+          ),
+          h('div',{className:"mt-6 p-3 rounded bg-primary-50 border text-sm"},"Response <4h workday. No bots. If trial, we call to help setup wizard 9 steps from empty to usable in 30 min.")
+        ),
+        h('div',{className:"bg-white border rounded-xl p-6 shadow-sm"},
+          h('h3',{className:"font-semibold"},"Quick contact form"),
+          h('form',{onSubmit:e=>{e.preventDefault(); alert("Message sent — we will respond <4h"); trackConversion('contact_submit');},className:"mt-3 space-y-3"},
+            h('input',{placeholder:"School name *",required:true,className:"w-full h-11 px-3 border rounded"}),
+            h('input',{placeholder:"Your name *",required:true,className:"w-full h-11 px-3 border rounded"}),
+            h('input',{type:"email",placeholder:"Email *",required:true,className:"w-full h-11 px-3 border rounded"}),
+            h('textarea',{placeholder:"What is the biggest headache at term-end? Fees, reports, attendance, messages?",rows:4,className:"w-full px-3 py-2 border rounded"}),
+            h('button',{type:"submit",className:"w-full min-h-touch py-3 rounded-lg bg-primary-800 text-white font-semibold"},"Send message")
+          )
+        )
+      )
+    )
+  );
+}
+
+function BookDemoPage(){
+  const [form,setForm]=useState({schoolName:"",contactName:"",role:"",email:"",phone:"",learnerCount:"",currentSystem:"",consent:false});
+  const [status,setStatus]=useState("idle");
+  const [error,setError]=useState("");
+
+  async function submit(e){
+    e.preventDefault();
+    if(!form.schoolName||!form.contactName||!form.email||!form.phone||!form.role||!form.learnerCount){setError("Fill required");setStatus("error");return;}
+    setStatus("loading");setError("");
+    try{
+      const res=await fetch(DEMO_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...form,source:"marketing_book_demo",hq:"Bulawayo",timestamp:new Date().toISOString()})});
+      if(!res.ok) throw new Error(`Server ${res.status}`);
+      setStatus("success");
+      trackConversion('demo_booking', {school: form.schoolName, learners: form.learnerCount, role: form.role});
+      setForm({schoolName:"",contactName:"",role:"",email:"",phone:"",learnerCount:"",currentSystem:"",consent:false});
+    }catch(err){setError(err.message);setStatus("error");}
+  }
+
+  return h('main',{className:"bg-white"},
+    h('section',{className:"py-12 bg-neutral-50 border-b"},
+      h('div',{className:"mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 grid lg:grid-cols-[1.1fr_0.9fr] gap-8"},
+        h('div',null,
+          h('h1',{className:"text-3xl font-extrabold leading-tight"},"See LearnCloud on your own data — 20 minutes, no hard sell"),
+          h('p',{className:"mt-3 text-neutral-600"},"For heads, bursars, directors. We use your fee structure and a sample class. You see fees collected without chasing, reports in an afternoon, messages with proof sent. Built for 150–2,000 learners, works on old laptops and 3G."),
+          h('ul',{className:"mt-6 space-y-2 text-sm"},
+            h('li',{className:"flex gap-2"},"✓ Live on your subdomain in week two"),
+            h('li',{className:"flex gap-2"},"✓ Setup wizard 9 steps, autosaves, resume, time-to-first-invoice 45 min"),
+            h('li',{className:"flex gap-2"},"✓ Clear pricing, 14-day trial no card, 30-day read-only after expiry, data never deleted")
+          ),
+          h('div',{className:"mt-6 p-3 rounded bg-primary-50 border text-sm"},"HQ Bulawayo — support in CAT. Email hello@learncloud.co.zw • Phone +263 29 123456 • Response <4h. No bots.")
+        ),
+        h('div',{className:"bg-white border rounded-xl p-6 shadow-md"},
+          status==="success" && h('div',{className:"mb-4 p-3 rounded bg-success-500/10 border border-success-500/20 text-success-700 text-sm"},"Demo request received! We'll email within 4h CAT. Check spam for hello@learncloud.co.zw."),
+          status==="error" && h('div',{className:"mb-4 p-3 rounded bg-danger-500/10 border text-danger-700 text-sm"},error),
+          h('form',{onSubmit:submit,className:"space-y-3"},
+            h('input',{placeholder:"School name *",value:form.schoolName,onChange:e=>setForm({...form,schoolName:e.target.value}),required:true,className:"w-full h-11 px-3 border rounded text-[16px]"}),
+            h('div',{className:"grid sm:grid-cols-2 gap-3"},
+              h('input',{placeholder:"Contact name *",value:form.contactName,onChange:e=>setForm({...form,contactName:e.target.value}),required:true,className:"h-11 px-3 border rounded"}),
+              h('select',{value:form.role,onChange:e=>setForm({...form,role:e.target.value}),required:true,className:"h-11 px-3 border rounded"},h('option',{value:""},"Role *"),h('option',{value:"HEAD"},"Head Teacher"),h('option',{value:"BURSAR"},"Bursar"),h('option',{value:"DIRECTOR"},"Director"),h('option',{value:"SCHOOL_ADMIN"},"School Admin"),h('option',{value:"REGISTRAR"},"Registrar"))
+            ),
+            h('div',{className:"grid sm:grid-cols-2 gap-3"},
+              h('input',{type:"email",placeholder:"Email *",value:form.email,onChange:e=>setForm({...form,email:e.target.value}),required:true,className:"h-11 px-3 border rounded"}),
+              h('input',{type:"tel",placeholder:"Phone WhatsApp *",value:form.phone,onChange:e=>setForm({...form,phone:e.target.value}),required:true,className:"h-11 px-3 border rounded"})
+            ),
+            h('div',{className:"grid sm:grid-cols-2 gap-3"},
+              h('select',{value:form.learnerCount,onChange:e=>setForm({...form,learnerCount:e.target.value}),required:true,className:"h-11 px-3 border rounded"},h('option',{value:""},"Learner count *"),h('option',{value:"150-300"},"150–300 (Starter)"),h('option',{value:"301-800"},"301–800 (Growth)"),h('option',{value:"801-2000"},"801–2,000 (Scale)"),h('option',{value:"2000+"},"2000+")),
+              h('input',{placeholder:"Current system (Excel, Pastel, etc.)",value:form.currentSystem,onChange:e=>setForm({...form,currentSystem:e.target.value}),className:"h-11 px-3 border rounded"})
+            ),
+            h('label',{className:"flex gap-2 text-xs text-neutral-600"},h('input',{type:"checkbox",checked:form.consent,onChange:e=>setForm({...form,consent:e.target.checked}),className:"mt-0.5"}),"I agree to be contacted per ZW Data Protection Act 12:07. No spam."),
+            h('button',{type:"submit",disabled:status==="loading",className:"w-full min-h-touch py-3 rounded-lg bg-primary-800 text-white font-semibold disabled:opacity-60"},status==="loading"?"Sending...":"Book a demo — free 20 min"),
+            h('p',{className:"text-[11px] text-neutral-400 text-center"},`Posts to ${DEMO_ENDPOINT} (configurable). JSON, success/error states, conversion tracked.`)
+          )
+        )
+      )
+    )
+  );
+}
+
+function BlogIndexPage({navigate}){
+  const posts=[
+    {slug:"term-reports-afternoon",title:"How Petra High finished term reports in an afternoon, not a week",excerpt:"Marks entry grid keyboard-first, Tab/Enter/Arrows, autosave, weighted averages auto, publish one click. Even when ZESA cut power, saved locally and synced.",date:"2026-07-15"},
+    {slug:"arrears-without-bursar",title:"Know who owes fees without asking the bursar — at 7am",excerpt:"Live balance, receipts, ageing 30/60/90, billing guardian flag, statement PDF. Prints in greyscale with icons. No float money bugs.",date:"2026-07-01"},
+    {slug:"timetable-clash-plain-language",title:"Timetable clash explained in plain language, not silently refused",excerpt:"Teacher in two places, class double-booked, room conflict — explained: 'Mrs Moyo already teaching Form 2B Math at Monday Period 2'. Effective dated preserves history.",date:"2026-06-20"},
+  ];
+  return h('main',{className:"bg-white"},
+    h('section',{className:"py-12 bg-neutral-50 border-b"},
+      h('div',{className:"mx-auto max-w-3xl px-4 sm:px-6 lg:px-8"},
+        h('h1',{className:"text-3xl font-extrabold"},"Notes from schools using LearnCloud — practical, not hyped"),
+        h('div',{className:"mt-6 space-y-4"},
+          ...posts.map(p=>
+            h('article',{key:p.slug,className:"p-4 border rounded-lg bg-white hover:shadow-sm"},
+              h('div',{className:"text-xs text-neutral-500"},p.date),
+              h('h2',{className:"font-semibold mt-1"},h('a',{href:`/blog/${p.slug}`,onClick:e=>{e.preventDefault();navigate(`/blog/${p.slug}`);},className:"hover:text-primary-800 hover:underline"},p.title)),
+              h('p',{className:"mt-1 text-sm text-neutral-600"},p.excerpt),
+              h('a',{href:`/blog/${p.slug}`,onClick:e=>{e.preventDefault();navigate(`/blog/${p.slug}`);},className:"mt-2 inline-block text-xs font-medium text-primary-800"},"Read →")
+            )
+          )
+        )
+      )
+    )
+  );
+}
+
+function BlogPostTemplate({slug, navigate}){
+  const content = slug==="term-reports-afternoon" ? {
+    title:"How Petra High finished term reports in an afternoon, not a week",
+    date:"2026-07-15",
+    body:"Petra High Grade 5 Blue had 40 learners, 8 subjects, 3 assessments per subject. Previously teachers retyped marks from paper to Excel to Word, lost files, ranking wrong on ties. With LearnCloud marks entry grid: keyboard navigable Tab/Enter/Arrows, autosave 3s, validation against max, draft + submit locks pending approval. Teacher Moyo marked 40 in 12 minutes. Head approved, published one click, parents saw published cards only, A4 greyscale prints correctly. Position 1224 standard competition handled ties fair, absent distinct from zero, optional subjects excluded from aggregate, mid-term joiner average of attempted + flag. All grading logic in one service AssessmentCalculationService thorough unit tests."
+  } : {
+    title:"Know who owes fees without asking the bursar — at 7am",
+    date:"2026-07-01",
+    body:"Bursar was bottleneck. Fee info lived in spreadsheet on one laptop. LearnCloud shows live balance, receipts, ageing, billing guardian. All arithmetic in FeeCalculationService decimal(18,2)+currency, no float elsewhere. Three real balances 95.00, 324.34, 30 credit reproduced to cent. Allocation oldest first, manual override boarding first, part-payments and overpayment credit, credit notes reason audited, arrears as at date, printable invoice receipt statement arrears list by class and amount. Bursar can invoice and receipt, head can view, teacher sees nothing, enforced server-side plus tenant filter."
+  };
+  return h('main',{className:"bg-white"},
+    h('article',{className:"py-12 max-w-3xl mx-auto px-4 sm:px-6 lg:px-8"},
+      h('a',{href:"/blog",onClick:e=>{e.preventDefault();navigate('/blog');},className:"text-sm text-primary-800 hover:underline"},"← Blog index"),
+      h('h1',{className:"mt-4 text-3xl font-extrabold leading-tight"},content.title),
+      h('div',{className:"mt-2 text-xs text-neutral-500"},content.date+" • Petra High, Bulawayo"),
+      h('p',{className:"mt-6 text-neutral-700 leading-relaxed"},content.body),
+      h('div',{className:"mt-8 p-4 rounded bg-primary-50 border"},"Outcome: "+content.title),
+      h('a',{href:"/book-a-demo",onClick:e=>{e.preventDefault();navigate('/book-a-demo');},className:"mt-6 inline-flex px-5 py-3 rounded-lg bg-primary-800 text-white font-semibold"},"Book a demo — see on your data")
+    )
+  );
+}
+
+function PrivacyPage(){
+  return h('main',{className:"bg-white py-12"},
+    h('div',{className:"mx-auto max-w-3xl px-4 sm:px-6 lg:px-8"},
+      h('h1',{className:"text-3xl font-extrabold"},"Privacy — How we handle records of minors"),
+      h('p',{className:"mt-2 text-sm text-neutral-500"},"Effective 2026-01-01 • HQ Bulawayo • Data Protection Act ZW 12:07"),
+      h('div',{className:"mt-6 space-y-4 text-sm leading-relaxed text-neutral-700"},
+        h('p',null,"We process personal data of children under 18. Lawful basis: explicit consent from parent/guardian at enrolment, versioned and stored, assent 13+. Data minimisation: only fields defined in student record — no biometric, no health beyond allergy flag without extra consent."),
+        h('p',null,"Access control: parent sees only own children via guardian_student_links, teacher sees only assigned classes via timetable_slots teacher_staff_id = me OR streams class_teacher_staff_id = me, bursar sees financial not health notes, platform admin no access to tenant PII without break-glass audit."),
+        h('p',null,"Encryption: TLS 1.2+ in transit, AES-256 at rest, passwords Argon2id, tenant_id leading indexes, global query filter via reflection, automatic assignment guard throws on cross-tenant FK."),
+        h('p',null,"Retention: transaction logs 2 years, backups 90 days, audit logs 5 years, student records 7 years post-graduation per Ministry."),
+        h('p',null,"Breach: suspected breach involving minors triggers alert to platform admin within 1h and school admin within 24h."),
+        h('p',null,"Third-party processors: no learner data sent to AI/analytics/marketing without school opt-in. Email/SMS providers listed as processors in DPA."),
+        h('p',null,"Data residency: primary in Africa region South Africa, backup different AZ. No marketing resale."),
+        h('p',null,"Right to be forgotten: anonymize within 30 days after legal retention, financial audit retained 7 years anonymized ledger.")
+      )
+    )
+  );
+}
+
+function TermsPage(){
+  return h('main',{className:"bg-white py-12"},
+    h('div',{className:"mx-auto max-w-3xl px-4 sm:px-6 lg:px-8"},
+      h('h1',{className:"text-3xl font-extrabold"},"Terms of Service — Plain language for schools"),
+      h('div',{className:"mt-6 space-y-4 text-sm leading-relaxed text-neutral-700"},
+        h('p',null,"Trial 14 days no card, reminders day7,12,expiry, 30-day read-only window after expiry before archival, data never deleted, export allowed."),
+        h('p',null,"Billing per term aligned to school term, snapshot billable learner count at period start, price per learner per term with minimum charge: Starter $0.50 min $99 300 learners, Growth $1.00 min $149 800, Scale $2.00 min $199 2000. Invoice PLAT-2026-00001 due 14 days, manual capture at first gateway later."),
+        h('p',null,"Upgrade immediate with pro-rata charge priceDiff*learners*daysRemaining/daysInPeriod, downgrade next period pendingPlanId, both logged."),
+        h('p',null,"Suspension: tenant becomes read-only with clear banner and payment link. Never delete data, never lock school out entirely — that destroys win-back chance. Read-only allows view/export but not edit."),
+        h('p',null,"Uptime 99.5% monthly, nightly backups RPO 4h RTO 8h, support CAT <4h workday. Feature gating blocks endpoints not included in plan returns 402 upgrade_required."),
+        h('p',null,"Cancellation effective next period, data retained 7 years, export CSV. Suspension read-only never deletion.")
+      )
+    )
+  );
+}
+
+function SecurityPage(){
+  return h('main',{className:"bg-white py-12"},
+    h('div',{className:"mx-auto max-w-3xl px-4 sm:px-6 lg:px-8"},
+      h('h1',{className:"text-3xl font-extrabold"},"Security & Data Protection — Tenant isolation, audit, backups"),
+      h('div',{className:"mt-6 space-y-4 text-sm leading-relaxed"},
+        h('div',null,h('h3',{className:"font-semibold"},"Tenant isolation"),h('p',{className:"mt-1 text-neutral-700"},"Shared database with tenant_id discriminator, ITenantEntity TenantId, BaseEntity audit soft-delete, ITenantContext resolves from validated JWT claim tid source of truth, for anonymous resolves from subdomain purely to select login context, Tenant resolution middleware ordered after authentication before authorization returns 403 and logs security event if subdomain tenant and token tenant disagree, DbContext global query filter via reflection automatically by tenant_id and IsDeleted, automatic TenantId assignment on SaveChanges guard throws if different from context, audit interceptor writing tenant actor entity action before/after, explicit no-tenant mechanism requires privileged role PLATFORM_SUPERADMIN audited.")),
+        h('div',null,h('h3',{className:"font-semibold"},"Money bugs"),h('p',{className:"mt-1 text-neutral-700"},"All monetary values decimal(18,2)+currency, all arithmetic lives in FeeCalculationService with unit tests three real balances 95.00, 324.34, 30 credit exact to cent, no arithmetic elsewhere, invoice generation background job idempotent reports created/skipped why, reversals never deletions, printable invoice receipt statement arrears list, bursar can invoice and receipt head can view teacher sees nothing.")),
+        h('div',null,h('h3',{className:"font-semibold"},"Grading and aggregation"),h('p',{className:"mt-1 text-neutral-700"},"All grading and aggregation logic in one service AssessmentCalculationService with thorough unit tests including ties 1224 standard competition, absent distinct from zero, subjects not taken excluded from aggregate, mid-term joiner average of attempted + flag excluded from position if >50% term elapsed, configurable position by aggregate or average default average, draft/approved/published states only published visible to parents, A4 greyscale prints correctly.")),
+        h('div',null,h('h3',{className:"font-semibold"},"Backups"),h('p',{className:"mt-1 text-neutral-700"},"Nightly full backups 02:00 CAT incremental WAL hourly, RPO 4h RTO 8h, restore tested quarterly, encrypted AES-256, TLS 1.2+, Argon2id passwords, rate limiting 100 req/min/user.")),
+        h('div',null,h('h3',{className:"font-semibold"},"Isolation tests"),h('p',{className:"mt-1 text-neutral-700"},"Integration test suite seeds two tenants overlapping data and proves tenant A cannot read/update/delete/reference B by guessing ID, filtering, sorting, searching, FK in create, runs in CI .github/workflows/ci.yml. Teacher portal tests attempt other teacher's class must fail 401."))
+      )
+    )
+  );
+}
+
+function HelpCentrePage({navigate}){
+  const articles=[
+    {title:"Setup wizard — from empty tenant to usable in 30 minutes",desc:"9 steps school profile, branding #0F153A, academic year, terms 3 default, classes streams Form1 A,B,C bulk, subjects starter list, departments roles, grading bands, preferences week start attendance mode daily/per period invoice numbering. Progress saved after every step resume, skippable except profile and academic year."},
+    {title:"Import learners — CSV template, mapping, validation, background job",desc:"Download template with example rows and column-meaning guide, upload file, map columns fuzzy matching, preview first 20 rows and full error list plain language, import background job progress reporting, atomic either every valid row committed or none, undo within 24h by batch id, error report downloadable, handles mixed date formats trailing spaces names single cell or split guardians repeated across siblings blank rows merged headers."},
+    {title:"Mark attendance in 9 seconds",desc:"Whole class listed, one tap cycles Present Absent Late Excused Sick, mark all present, autosave every 5s unsaved indicator, one-handed phone 44px targets, absence reason note, duplicate guard same class date period, backdating within configurable window flagged audit, summaries per learner per class per term percentage threshold flags chronic, printable A4 monthly register."},
+    {title:"Timetable without clash",desc:"Periods defined per tenant times and break slots, weekly grid editor assign subject teacher to class period, clash detection teacher in two places class double-booked room conflict if rooms used explained plain language not silently refuse, views by class and teacher printable, effective dated mid-term change does not rewrite history."},
+    {title:"Fees collected without chasing — part-payment allocation oldest first",desc:"Fee items tuition boarding transport levy uniform recurring per term/year/one-off, fee structures assigning to class/stream/learner for year/term, discounts scholarships percentage/fixed reason approver, invoices per learner per term line items invoice number from sequence issue/due date, payments recorded method reference date receipt number allocated oldest first default manual override part-payments overpayments credit, credit notes reason audit, arrears as at date. All decimal explicit currency all arithmetic in FeeCalculationService unit tests allocation and arrears, invoice generation background job idempotent reports created/skipped why, reversals never deletions, printable invoice receipt statement arrears by class and amount owed."},
+    {title:"Teacher portal — only own classes enforced server-side",desc:"Dashboard today's timetable registers to mark marks deadlines unread notices, my classes only assigned enforced server-side via timetable_slots teacher_staff_id, attendance capture reusing register screen, marks entry keyboard navigable grid autosave validation max save-as-draft submit locks pending approval, homework create attach file due date target class submission status, lesson plans template, learners in class read-only guardian contacts permission, profile password management. Tests attempt other teacher's class must fail. Mid-range phone slow connection bottom nav thumb zone."},
+  ];
+  return h('main',{className:"bg-white"},
+    h('section',{className:"py-12 bg-neutral-50 border-b"},
+      h('div',{className:"mx-auto max-w-3xl px-4 sm:px-6 lg:px-8"},
+        h('h1',{className:"text-3xl font-extrabold"},"Help Centre — Setup, attendance, fees, reports, messaging"),
+        h('div',{className:"mt-6 space-y-4"},
+          ...articles.map(a=>h('div',{className:"p-4 border rounded-lg bg-white"},h('h3',{className:"font-semibold"},a.title),h('p',{className:"mt-1 text-sm text-neutral-600"},a.desc),h('a',{href:"/book-a-demo",onClick:e=>{e.preventDefault();navigate('/book-a-demo');},className:"mt-2 inline-block text-xs font-medium text-primary-800"},"Book a demo to see this live →"))))
+      )
+    )
+  );
+}
+
+// --- Router ---
+function App(){
+  const [path,setPath]=useState(window.location.pathname);
+  const [blogSlug,setBlogSlug]=useState(null);
+
+  function navigate(to){
+    const [base, query] = to.split("?");
+    if(base.startsWith("/blog/")){
+      const slug = base.split("/blog/")[1];
+      setBlogSlug(slug);
+      window.history.pushState({}, "", to);
+      setPath("/blog-post");
+    } else {
+      setBlogSlug(null);
+      window.history.pushState({}, "", to);
+      setPath(base);
+    }
+    setSEO(base);
+    window.scrollTo(0,0);
+    trackConversion('page_view', {page: base});
+  }
+
+  useEffect(()=>{
+    const onPopState=()=>{
+      const p=window.location.pathname;
+      if(p.startsWith("/blog/") && p!=="/blog"){
+        setBlogSlug(p.split("/blog/")[1]);
+        setPath("/blog-post");
+      } else {
+        setBlogSlug(null);
+        setPath(p);
+      }
+      setSEO(p);
+    };
+    window.addEventListener('popstate', onPopState);
+    setSEO(path);
+    // Intercept link clicks for SPA
+    const handler=e=>{
+      const a=e.target.closest('a');
+      if(a && a.href && a.origin===window.location.origin && !a.target && a.getAttribute('href')?.startsWith('/')){
+        e.preventDefault();
+        navigate(a.getAttribute('href'));
+      }
+    };
+    document.addEventListener('click', handler);
+    return ()=>{ window.removeEventListener('popstate', onPopState); document.removeEventListener('click', handler); };
+  },[]);
+
+  return h('div',null,
+    h(Header,{currentPath:path,navigate}),
+    path==="/" && h(HomePage,{navigate}),
+    path==="/features" && h(FeaturesPage,{navigate}),
+    path==="/pricing" && h(PricingPage,{navigate}),
+    path==="/about" && h(AboutPage,null),
+    path==="/contact" && h(ContactPage,null),
+    path==="/book-a-demo" && h(BookDemoPage,null),
+    path==="/blog" && h(BlogIndexPage,{navigate}),
+    path==="/blog-post" && h(BlogPostTemplate,{slug:blogSlug,navigate}),
+    path==="/privacy" && h(PrivacyPage,null),
+    path==="/terms" && h(TermsPage,null),
+    path==="/security" && h(SecurityPage,null),
+    path==="/help" && h(HelpCentrePage,{navigate}),
+    !["/","/features","/pricing","/about","/contact","/book-a-demo","/blog","/blog-post","/privacy","/terms","/security","/help"].includes(path) && h('main',{className:"py-20 text-center"},h('h1',{className:"text-2xl font-bold"},"Page not found"),h('p',{className:"mt-2 text-sm text-neutral-600"},"Go to ",h('a',{href:"/",onClick:e=>{e.preventDefault();navigate('/');},className:"text-primary-800 underline"},"home")),h('div',{className:"mt-4 text-xs text-neutral-400"},"Path: "+path)),
+    h(Footer,{navigate})
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(h(App));
+</script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #0F153A;
+  --secondary: #5F3F96;
+  --ring: rgba(132, 76, 173, 0.35);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Focus visible - enterprise accessible */
+:focus-visible {
+  outline: 2px solid #0F153A;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(132, 76, 173, 0.25);
+}
+
+/* Remove default focus for mouse, keep for keyboard */
+:focus:not(:focus-visible) {
+  outline: none;
+  box-shadow: none;
+}
+
+/* Premium scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #B4B6B8;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #8A8D93;
+}
+
+/* Glow border token */
+.glow-border {
+  box-shadow: 0 0 0 1px rgba(188,146,205,0.25), 0 0 30px rgba(132,76,173,0.35), 0 0 70px rgba(48,126,192,0.25), 0 20px 60px rgba(0,0,0,0.5);
+}
+
+/* Diagonal clip - desktop */
+.diagonal-left {
+  clip-path: polygon(0 0, 100% 0, 86% 100%, 0 100%);
+}
+.diagonal-right {
+  clip-path: polygon(14% 0, 100% 0, 100% 100%, 0 100%);
+}
+
+/* Diagonal clip - mobile (horizontal) */
+.diagonal-top {
+  clip-path: polygon(0 0, 100% 0, 100% 86%, 0 100%);
+}
+.diagonal-bottom {
+  clip-path: polygon(0 14%, 100% 0, 100% 100%, 0 100%);
+}
+
+@media (max-width: 768px) {
+  .diagonal-left {
+    clip-path: polygon(0 0, 100% 0, 100% 86%, 0 100%);
+  }
+  .diagonal-right {
+    clip-path: polygon(0 14%, 100% 0, 100% 100%, 0 100%);
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Utility for safe area */
+.safe-bottom {
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+
+/* Enterprise input autofill */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px white inset;
+  transition: background-color 5000s ease-in-out 0s;
+}

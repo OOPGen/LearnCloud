@@ -1,0 +1,181 @@
+-- LearnCloud Messaging Module V5 - SMS & Email to guardians
+-- Provider abstraction, audience, templates merge fields, delivery log, usage counter, cap, opt-out
+
+CREATE TABLE IF NOT EXISTS message_templates (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  tenant_id BIGINT UNSIGNED NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  code VARCHAR(50) NOT NULL,
+  channel INT NOT NULL COMMENT '1=Sms,2=Email,3=Portal',
+  subject VARCHAR(255) NOT NULL DEFAULT '',
+  body TEXT NOT NULL,
+  is_system TINYINT(1) NOT NULL DEFAULT 0,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  description VARCHAR(500) NULL,
+  merge_fields_json JSON NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_by BIGINT UNSIGNED NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  updated_by BIGINT UNSIGNED NULL,
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+  deleted_at DATETIME NULL,
+  deleted_by BIGINT UNSIGNED NULL,
+  CONSTRAINT fk_msg_tpl_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_msg_tpl_tenant_code (tenant_id, code),
+  KEY idx_msg_tpl_tenant_channel (tenant_id, channel)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS message_batches (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  tenant_id BIGINT UNSIGNED NOT NULL,
+  batch_number VARCHAR(50) NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  template_id BIGINT UNSIGNED NULL,
+  channel INT NOT NULL,
+  audience_type INT NOT NULL,
+  audience_filter_json JSON NOT NULL,
+  body TEXT NOT NULL,
+  subject VARCHAR(500) NULL,
+  total_recipients INT NOT NULL DEFAULT 0,
+  sent_count INT NOT NULL DEFAULT 0,
+  delivered_count INT NOT NULL DEFAULT 0,
+  failed_count INT NOT NULL DEFAULT 0,
+  estimated_cost DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  actual_cost DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  currency CHAR(3) NOT NULL DEFAULT 'USD',
+  status INT NOT NULL DEFAULT 1 COMMENT '1=Draft,2=Queued,3=Sending,4=Sent,5=Delivered,6=Failed,7=Cancelled',
+  queued_at DATETIME NULL,
+  started_at DATETIME NULL,
+  completed_at DATETIME NULL,
+  created_by_user_id BIGINT UNSIGNED NOT NULL,
+  cost_estimate_json JSON NULL,
+  is_previewed TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_by BIGINT UNSIGNED NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  updated_by BIGINT UNSIGNED NULL,
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+  deleted_at DATETIME NULL,
+  deleted_by BIGINT UNSIGNED NULL,
+  CONSTRAINT fk_msg_batch_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  CONSTRAINT fk_msg_batch_template FOREIGN KEY (template_id) REFERENCES message_templates(id) ON DELETE SET NULL,
+  UNIQUE KEY uq_msg_batch_tenant_number (tenant_id, batch_number),
+  KEY idx_msg_batch_tenant_status (tenant_id, status),
+  KEY idx_msg_batch_tenant_created (tenant_id, created_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS message_delivery_logs (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  tenant_id BIGINT UNSIGNED NOT NULL,
+  batch_id BIGINT UNSIGNED NOT NULL,
+  guardian_id BIGINT UNSIGNED NULL,
+  student_id BIGINT UNSIGNED NULL,
+  recipient_name VARCHAR(255) NOT NULL,
+  recipient_address VARCHAR(255) NOT NULL COMMENT 'phone or email',
+  channel INT NOT NULL,
+  status INT NOT NULL DEFAULT 2,
+  provider VARCHAR(50) NULL,
+  provider_reference VARCHAR(100) NULL,
+  cost DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  currency CHAR(3) NOT NULL DEFAULT 'USD',
+  rendered_body TEXT NOT NULL,
+  rendered_subject VARCHAR(500) NULL,
+  retry_count INT NOT NULL DEFAULT 0,
+  last_attempt_at DATETIME NULL,
+  delivered_at DATETIME NULL,
+  failure_reason VARCHAR(500) NULL,
+  is_opted_out TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_by BIGINT UNSIGNED NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  updated_by BIGINT UNSIGNED NULL,
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+  deleted_at DATETIME NULL,
+  deleted_by BIGINT UNSIGNED NULL,
+  CONSTRAINT fk_msg_log_batch FOREIGN KEY (batch_id) REFERENCES message_batches(id) ON DELETE CASCADE,
+  CONSTRAINT fk_msg_log_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  KEY idx_msg_log_tenant_batch (tenant_id, batch_id),
+  KEY idx_msg_log_tenant_guardian (tenant_id, guardian_id),
+  KEY idx_msg_log_tenant_status (tenant_id, status),
+  KEY idx_msg_log_provider_ref (provider_reference)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS tenant_messaging_usage (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  tenant_id BIGINT UNSIGNED NOT NULL,
+  year INT NOT NULL,
+  month INT NOT NULL,
+  sms_count INT NOT NULL DEFAULT 0,
+  email_count INT NOT NULL DEFAULT 0,
+  sms_cost DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  email_cost DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  sms_limit INT NOT NULL DEFAULT 1000,
+  email_limit INT NOT NULL DEFAULT 5000,
+  currency CHAR(3) NOT NULL DEFAULT 'USD',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_by BIGINT UNSIGNED NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  updated_by BIGINT UNSIGNED NULL,
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+  deleted_at DATETIME NULL,
+  deleted_by BIGINT UNSIGNED NULL,
+  CONSTRAINT fk_usage_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_usage_tenant_year_month (tenant_id, year, month)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS guardian_contact_preferences (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  tenant_id BIGINT UNSIGNED NOT NULL,
+  guardian_id BIGINT UNSIGNED NOT NULL,
+  sms_opt_in TINYINT(1) NOT NULL DEFAULT 1,
+  email_opt_in TINYINT(1) NOT NULL DEFAULT 1,
+  sms_opt_out TINYINT(1) NOT NULL DEFAULT 0,
+  email_opt_out TINYINT(1) NOT NULL DEFAULT 0,
+  sms_opt_out_at DATETIME NULL,
+  email_opt_out_at DATETIME NULL,
+  opt_out_reason VARCHAR(255) NULL,
+  preferred_language VARCHAR(10) NULL DEFAULT 'en',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_by BIGINT UNSIGNED NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  updated_by BIGINT UNSIGNED NULL,
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+  deleted_at DATETIME NULL,
+  deleted_by BIGINT UNSIGNED NULL,
+  CONSTRAINT fk_pref_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_pref_tenant_guardian (tenant_id, guardian_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS messaging_provider_settings (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  tenant_id BIGINT UNSIGNED NOT NULL,
+  channel INT NOT NULL,
+  provider_name VARCHAR(50) NOT NULL,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  is_default TINYINT(1) NOT NULL DEFAULT 1,
+  config_json JSON NULL,
+  cost_per_sms DECIMAL(18,4) NOT NULL DEFAULT 0.0500,
+  cost_per_email DECIMAL(18,4) NOT NULL DEFAULT 0.0100,
+  currency CHAR(3) NOT NULL DEFAULT 'USD',
+  rate_limit_per_second INT NOT NULL DEFAULT 10,
+  daily_cap INT NOT NULL DEFAULT 1000,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_by BIGINT UNSIGNED NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  updated_by BIGINT UNSIGNED NULL,
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+  deleted_at DATETIME NULL,
+  deleted_by BIGINT UNSIGNED NULL,
+  CONSTRAINT fk_provider_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_provider_tenant_channel_default (tenant_id, channel, is_default),
+  KEY idx_provider_tenant_channel (tenant_id, channel, is_active)
+) ENGINE=InnoDB;
+
+-- Seed default provider settings for existing tenants (EcoCashSms + Smtp)
+INSERT INTO messaging_provider_settings (tenant_id, channel, provider_name, is_active, is_default, cost_per_sms, cost_per_email, currency, rate_limit_per_second, daily_cap)
+SELECT id, 1, 'EcoCashSms', 1, 1, 0.05, 0.00, 'USD', 10, 1000 FROM tenants WHERE NOT EXISTS (SELECT 1 FROM messaging_provider_settings WHERE tenant_id=tenants.id AND channel=1)
+ON DUPLICATE KEY UPDATE provider_name=VALUES(provider_name);
+
+INSERT INTO messaging_provider_settings (tenant_id, channel, provider_name, is_active, is_default, cost_per_sms, cost_per_email, currency, rate_limit_per_second, daily_cap)
+SELECT id, 2, 'Smtp', 1, 1, 0.00, 0.01, 'USD', 20, 5000 FROM tenants WHERE NOT EXISTS (SELECT 1 FROM messaging_provider_settings WHERE tenant_id=tenants.id AND channel=2)
+ON DUPLICATE KEY UPDATE provider_name=VALUES(provider_name);

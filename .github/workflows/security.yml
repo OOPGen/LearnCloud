@@ -1,0 +1,124 @@
+name: Security - Tenant Isolation + Secrets Scan
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  gitleaks:
+    name: Gitleaks Secrets Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          config-path: .gitleaks.toml
+
+  tenant-isolation-guards:
+    name: Tenant Isolation CI Guards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: C1 - Ban IgnoreQueryFilters outside allowed
+        run: |
+          echo "Checking C1: IgnoreQueryFilters..."
+          VIOLATIONS=$(grep -R "\.IgnoreQueryFilters()" src --include="*.cs" | grep -v "Tests" | grep -v "NoTenantScope.cs" | grep -v "TenantContext.cs" || true)
+          if [ -n "$VIOLATIONS" ]; then
+            echo "❌ C1 VIOLATION: IgnoreQueryFilters found outside allowed files"
+            echo "$VIOLATIONS"
+            exit 1
+          fi
+          echo "✅ C1 PASS"
+
+      - name: C2 - Ban FromSqlRaw
+        run: |
+          echo "Checking C2: FromSqlRaw..."
+          VIOLATIONS=$(grep -R "FromSqlRaw\|FromSqlInterpolated\|ExecuteSqlRaw" src --include="*.cs" | grep -v "Tests" || true)
+          if [ -n "$VIOLATIONS" ]; then
+            echo "❌ C2 VIOLATION: Raw SQL found"
+            echo "$VIOLATIONS"
+            exit 1
+          fi
+          echo "✅ C2 PASS"
+
+      - name: C3/C6 - File storage tenant check
+        run: |
+          echo "Checking file storage..."
+          VIOLATIONS=$(grep -R '"/exports/\|"/uploads/' src --include="*.cs" | grep -v "Tests" | grep "fileUrl" | grep -v "api/files" | grep -v "AppContext.BaseDirectory" || true)
+          if [ -n "$VIOLATIONS" ]; then
+            echo "❌ FILE STORAGE VIOLATION"
+            echo "$VIOLATIONS"
+            exit 1
+          fi
+          echo "✅ File storage PASS"
+
+      - name: Hardcoded secrets check
+        run: |
+          echo "Checking hardcoded secrets..."
+          # Check for Password=root fallback (should only be in validation checks with SECURITY comment)
+          VIOLATIONS=$(grep -R "Password=root" src --include="*.cs" | grep -v "SECURITY" | grep -v "Validate" || true)
+          if [ -n "$VIOLATIONS" ]; then
+            echo "❌ Hardcoded DB password found:"
+            echo "$VIOLATIONS"
+            exit 1
+          fi
+          # Check for demo integration keys as defaults (not in validation)
+          VIOLATIONS2=$(grep -R "demo-integration-id" src --include="*.cs" | grep -v "SECURITY" | grep -v "Validate" | grep -v "Contains" || true)
+          if [ -n "$VIOLATIONS2" ]; then
+            echo "❌ Demo PayNow keys found as defaults:"
+            echo "$VIOLATIONS2"
+            exit 1
+          fi
+          echo "✅ Hardcoded secrets PASS"
+
+      - name: Run tenant isolation guards script
+        run: |
+          chmod +x scripts/ci_tenant_isolation_guards.sh
+          ./scripts/ci_tenant_isolation_guards.sh
+
+  owasp-dependency-check:
+    name: OWASP Dependency Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: "LearnCloud"
+          path: "."
+          format: "HTML"
+          args: >
+            --failOnCVSS 7
+            --enableRetired
+
+  security-headers:
+    name: Security Headers Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Nginx security headers
+        run: |
+          echo "Checking Nginx security headers..."
+          grep -q "Content-Security-Policy" deployment/nginx/nginx.conf || (echo "❌ CSP missing in nginx.conf" && exit 1)
+          grep -q "X-Content-Type-Options" deployment/nginx/nginx.conf || (echo "❌ X-Content-Type-Options missing" && exit 1)
+          grep -q "X-Frame-Options" deployment/nginx/nginx.conf || (echo "❌ X-Frame-Options missing" && exit 1)
+          echo "✅ Security headers present"
+
+  api-security:
+    name: API Security Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check missing Authorize on sensitive endpoints
+        run: |
+          echo "Checking for missing Authorize on print endpoints..."
+          # PrintReceipt should have Authorize
+          grep -A2 "receipt/print" src/LearnCloud.Fees/Controllers/FeesController.cs | grep -q "Authorize" || (echo "❌ PrintReceipt missing Authorize" && exit 1)
+          echo "✅ API auth checks PASS"

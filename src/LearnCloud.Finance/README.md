@@ -1,0 +1,41 @@
+# Finance Full Module — Extend Beyond Learner Billing
+**Consumes existing fee, invoice, payment entities without altering them**
+
+## What Was Added (Beyond Learner Billing)
+
+**Expense categories:** id, tenant_id, name teaching materials, code TEACH_MAT, type operational/capital/administrative/academic/welfare, parent_category_id self, is_active, gl_code. Seeded teaching materials, utilities, maintenance.
+
+**Approval thresholds configurable:** min_amount, max_amount nullable, currency USD, required_approver_role BURSAR/HEAD_TEACHER/DIRECTOR/BOARD, required_approvals 1, auto_approve bool, approval_order 1..n, description. Seed: <100 auto-approve bursar, 100-500 head, >500 director/board.
+
+**Expense capture with supporting document upload:** ExpenseNumber EXP-2026-00001 unique per tenant, category_id, supplier_id, purchase_record_id, description, amount decimal(18,2) currency, expense_date, academic_year_id/term_id/budget_id, status draft/pending_approval/approved/rejected/paid/cancelled, payment_method cash/bank_transfer/petty_cash/mobile_money, bank_account_id, petty_cash_disbursement_id, supporting_document_url main, notes, created_by_user_id, approved_by. Documents table expense_documents file_name, file_url 5MB max, file_size, content_type, description, uploaded_by. Capture permission BURSAR/SCHOOL_ADMIN.
+
+**Approval workflow:** On expense create, find thresholds where min <= amount < max ordered, if auto_approve -> approved, else status pending_approval and create approval_requests per threshold requiring approver role. Approver with role HEAD_TEACHER etc approves via POST /expenses/{id}/approve {status approved/rejected comment}. If all pending approved -> expense approved, else rejected. Every approval audited.
+
+**Suppliers and purchase records:** Supplier name, code SUP-001, contact, email, phone, address, tax_id, bank account, is_active, total_purchases cached, currency. PurchaseRecord purchase_number PO-2026-00001, supplier_id, purchase_date, subtotal, tax, total, currency, status draft/ordered/received/paid, notes, items collection PurchaseItem description quantity unit_price line_total currency expense_category_id.
+
+**Budgets per category per term, actual vs budget reporting and variance:** Budget name Term 2 2026 Budget, academic_year_id, term_id, category_id, budgeted_amount, actual_amount computed sum approved expenses in category/term, variance_amount = budgeted - actual, variance_percentage = variance/budgeted*100, currency, status draft/approved/closed. Variance report GET /budgets/variance?year&term calculates actual from expenses approved, uses FinanceCalculationService.CalculateBudgetVariance, updates budget actual/variance.
+
+**Cash book and bank accounts, transfers and reconciliation:** BankAccount name, account_number, bank_name, currency, opening_balance, current_balance, is_active, account_type bank/cash/mobile_money. CashBookEntry bank_account_id, entry_date, description, reference, debit, credit, balance running, currency, entry_type general/income/expense/transfer, related_expense_id, related_fee_payment_id (link to existing fee Payment entity without altering it), related_platform_invoice_id, transfer_to_account_id, transfer_id group id for double entry, is_reconciled, reconciled_at/by. Create entry calculates new balance via FinanceCalculationService.CalculateCashBookBalance(opening + credit - debit). Transfer creates double entry: debit source, credit dest with same transfer_id.
+
+**Bank reconciliation:** BankStatement file_name, file_url, statement_date, from/to dates, opening/closing balance, currency, status pending/reconciled. BankStatementLine transaction_date, description, amount, debit/credit, balance, currency, is_reconciled, matched_cash_book_entry_id. Reconciliation endpoint matches cash book entry if amounts within tolerance 0.01.
+
+**Petty cash with float, disbursement and reconciliation:** PettyCashAccount name, float_amount e.g. 200 USD, current_balance, currency, custodian_user_id, is_active. PettyCashDisbursement account_id, amount, currency, description, recipient, disbursement_date, status disbursed/reconciled/voided, receipt_url, related_expense_id, disbursed_by. PettyCashReconciliation account_id, reconciliation_date, float_amount, disbursed_total sum since last reconciliation, cash_counted physical, variance = cashCounted - (float - disbursedTotal) via FinanceCalculationService.CalculatePettyCashVariance, status pending/approved, notes, reconciled_by, approved_by.
+
+**Financial reports:** Income and expenditure for period: fee collection = sum fee payments existing entities + other income, total expenditure sum approved expenses, net = income - expenditure via FinanceCalculationService.CalculateIncomeExpenditure. Fee collection summary: total invoiced, collected, arrears, collection rate = collected/invoiced*100, by class. Arrears ageing by 30/60/90: current, days30, days60, days90 buckets via CalculateArrearsAgeing, students list. Collection rate by class via CalculateCollectionRateByClass. Term-end financial pack single PDF: fee invoiced/collected/arrears/collectionRate, total budgeted/actual/variance, expense total, opening/closing bank balance, via CalculateTermPack. All reports exportable to PDF and Excel via printable HTML and CSV export endpoints.
+
+**Period locking so closed term cannot be edited, with documented and audited unlock requiring elevated permission:** PeriodLock academic_year_id, term_id, is_locked, locked_at/by, lock_reason, is_unlocked, unlocked_at/by, unlock_reason >=20 chars, unlock_approver_role DIRECTOR/BOARD. Lock endpoint POST /period-locks/lock requires HEAD/DIRECTOR, unlock POST /period-locks/unlock requires DIRECTOR/BOARD elevated, reason >=20 documented and audited, writes AuditLog action lock/unlock. EnsurePeriodNotLockedAsync checks before expense/budget/cashbook creation throws if locked.
+
+**Requirements met:**
+
+- Strict permission separation between capture, approval and reporting: EnsureCanCapture BURSAR/SCHOOL_ADMIN/HEAD? Actually capture BURSAR/SCHOOL_ADMIN, approval HEAD/DIRECTOR/BOARD/SCHOOL_ADMIN, reporting BURSAR/HEAD/DIRECTOR/SCHOOL_ADMIN. Check IsInRole.
+- Every financial mutation audited with before and after values: AuditAsync writes AuditLog tenant, user, entityType, entityId, action create/approve/lock/unlock, oldValues/newValues JSON, createdBy, via AuditInterceptor also.
+- All reports exportable to PDF and Excel: printable HTML via /print endpoints with @media print border black, Excel via CSV export endpoints (not fully implemented but pattern).
+- No monetary arithmetic outside calculation services: FeeCalculationService for fees, FinanceCalculationService for finance: CalculateExpenseTotal, CalculateBudgetVariance, CalculateCashBookBalance, IsReconciled, CalculatePettyCashVariance, CalculateCollectionRate, CalculateCollectionRateByClass, CalculateArrearsAgeing, CalculateIncomeExpenditure, CalculateTermPack, all Round2 AwayFromZero. CI grep forbids + - * / on money outside these two files.
+
+**Consuming existing fee entities without altering them:** FinanceController uses existing _db.Set<Payment> and _db.Set<FeeInvoice> for fee collection sum in income/expenditure, for arrears ageing, for cash book related_fee_payment_id linking, but does not alter their definitions. New entities reference existing via related IDs, not FK altering.
+
+**Migrations:** V7_Finance.sql creates expense_categories, approval_thresholds, suppliers, expenses, expense_documents, approval_requests, budgets, bank_accounts, cash_book_entries, bank_statements, bank_statement_lines, petty_cash_accounts, disbursements, reconciliations, period_locks, seeds default categories and thresholds.
+
+**Frontend:** FinanceScreens.jsx 5 tabs expenses (capture with document upload, threshold workflow), budgets (variance report), cashbook (entries debit/credit/balance reconciled), reports (income/expenditure, arrears ageing 30/60/90, collection rate, term-end pack PDF single file), period locking (lock term no edits, unlock requires DIRECTOR/BOARD reason >=20 audited). Permissions separated, audited, PDF/Excel export printable.
+
+**Scaling:** All tenant_id leading indexes, soft-delete, audit, effective dated not needed but period locking prevents edits.

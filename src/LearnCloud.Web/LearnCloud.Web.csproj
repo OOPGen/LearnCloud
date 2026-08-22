@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <SpaRoot>.\</SpaRoot>
+  </PropertyGroup>
+  <!-- This project is actually Vite React, built via npm, not dotnet, but included in solution for completeness -->
+  <Target Name="Build" Condition="false" />
+</Project>

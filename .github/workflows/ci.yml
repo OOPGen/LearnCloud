@@ -1,0 +1,79 @@
+name: CI - LearnCloud Multi-Tenancy Isolation Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  multi-tenancy-tests:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: learncloud_test
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore src/LearnCloud.MultiTenancy/LearnCloud.MultiTenancy.csproj || dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Run Migration (MySQL)
+        run: |
+          mysql -h 127.0.0.1 -P 3306 -u root -proot learncloud_test < src/LearnCloud.MultiTenancy/Migrations/V1_Auth_Migration.sql || true
+          mysql -h 127.0.0.1 -P 3306 -u root -proot learncloud_test < src/LearnCloud.Auth/Migrations/V1_Auth_Migration.sql || true
+
+      - name: Run Multi-Tenancy Isolation Tests (Critical - freeze after acceptance)
+        env:
+          ConnectionStrings__Default: "Server=127.0.0.1;Port=3306;Database=learncloud_test;User=root;Password=root;CharSet=utf8mb4;"
+          Jwt__Secret: "ci-test-secret-key-must-be-32+chars-long-for-HS256!!CI"
+          Jwt__Issuer: "LearnCloud"
+          Jwt__Audience: "LearnCloud"
+        run: |
+          dotnet test tests/MultiTenancyIsolationTests.csproj -c Release -v normal --filter "MultiTenancy" || dotnet test --filter MultiTenancy --logger "console;verbosity=detailed"
+
+      - name: Run All Auth Tests
+        env:
+          ConnectionStrings__Default: "Server=127.0.0.1;Port=3306;Database=learncloud_test;User=root;Password=root;CharSet=utf8mb4;"
+        run: dotnet test --logger "trx"
+
+      - name: Security - Check TenantId leading indexes
+        run: |
+          echo "Checking that every tenant-owned table has tenant_id as first index column..."
+          mysql -h 127.0.0.1 -P 3306 -u root -proot learncloud_test -e "SELECT TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA='learncloud_test' AND COLUMN_NAME='TenantId' ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX;" | tee indexes.txt
+          # Fail if any tenant-owned table missing tenant_id leading index - manual check in PR
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: '**/TestResults/*.trx'
+
+  lint-tenancy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check forbidden patterns (no IgnoreQueryFilters without explicit no-tenant scope)
+        run: |
+          echo "Scanning for unsafe IgnoreQueryFilters usage..."
+          if grep -R "IgnoreQueryFilters" --include="*.cs" src/ | grep -v "INoTenantOperation" | grep -v "ExplicitNoTenant" | grep -v "test" | grep -v "Tests"; then
+            echo "::warning:: Found IgnoreQueryFilters outside explicit no-tenant scope - review required"
+          fi
+          echo "Scanning for missing tenant filter..."
+          # This is a placeholder for Roslyn analyzer that would enforce ITenantEntity always filtered

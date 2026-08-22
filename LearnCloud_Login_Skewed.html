@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LearnCloud — Login | Petra High Bulawayo</title>
+<meta name="description" content="LearnCloud login - Fees collected. Reports ready. Parents informed. Before lunch. HQ Bulawayo.">
+<meta name="theme-color" content="#0F153A">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config={theme:{extend:{colors:{
+  primary:{50:"#F0F3FA",100:"#D9E0F2",500:"#307EC0",600:"#195699",700:"#073A69",800:"#0F153A",900:"#0B102C"},
+  secondary:{300:"#BC92CD",500:"#844CAD",600:"#5F3F96"},
+  neutral:{50:"#F8F9FA",200:"#E9ECEF",400:"#B4B6B8",600:"#5C5F66",800:"#171725"}
+},fontFamily:{sans:['system-ui','-apple-system','Segoe UI','Inter','sans-serif']}}}}
+</script>
+<style>
+html{scroll-behavior:smooth}
+:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(132,76,173,.35)}
+.glow-border{
+  box-shadow: 0 0 0 1px rgba(188,146,205,0.25), 0 0 30px rgba(132,76,173,0.35), 0 0 70px rgba(48,126,192,0.25), 0 20px 60px rgba(0,0,0,0.5);
+}
+.diagonal-left{
+  clip-path: polygon(0 0, 100% 0, 86% 100%, 0 100%);
+}
+.diagonal-right{
+  clip-path: polygon(14% 0, 100% 0, 100% 100%, 0 100%);
+}
+@media (max-width: 768px){
+  .diagonal-left{clip-path: polygon(0 0, 100% 0, 100% 86%, 0 100%);}
+  .diagonal-right{clip-path: polygon(0 14%, 100% 0, 100% 100%, 0 100%);}
+}
+.underline-input{
+  background: transparent;
+  border: none;
+  border-bottom: 1.5px solid #E9ECEF;
+  border-radius: 0;
+  transition: border-color 0.2s;
+}
+.underline-input:focus{
+  border-bottom-color: #5F3F96;
+  outline: none;
+  box-shadow: none;
+}
+</style>
+</head>
+<body class="min-h-screen bg-[#070A0F] font-sans antialiased selection:bg-secondary-500/30">
+<!-- Near-black background with subtle stars like first palette -->
+<div class="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden">
+  <!-- Background subtle gradient blobs -->
+  <div class="absolute inset-0 pointer-events-none">
+    <div class="absolute -top-32 -left-32 w-[600px] h-[600px] rounded-full blur-[120px] opacity-20" style="background: radial-gradient(circle, #5F3F96 0%, #0F153A 70%)"></div>
+    <div class="absolute -bottom-32 -right-32 w-[600px] h-[600px] rounded-full blur-[120px] opacity-15" style="background: radial-gradient(circle, #307EC0 0%, #0F153A 70%)"></div>
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full blur-[150px] opacity-10" style="background: radial-gradient(circle, #BC92CD 0%, transparent 70%)"></div>
+  </div>
+
+  <div id="root" class="w-full flex justify-center"></div>
+</div>
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script>
+const h = React.createElement;
+const {useState} = React;
+
+function IconMail(props){
+  return h('svg',{...props,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"1.8",strokeLinecap:"round",strokeLinejoin:"round"},h('path',{d:"M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"}),h('polyline',{points:"22,6 12,13 2,6"}));
+}
+function IconLock(props){
+  return h('svg',{...props,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"1.8"},h('rect',{x:3,y:11,width:18,height:11,rx:2,ry:2}),h('path',{d:"M7 11V7a5 5 0 0 1 10 0v4"}));
+}
+function IconUser(props){
+  return h('svg',{...props,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"1.8"},h('path',{d:"M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"}),h('circle',{cx:12,cy:7,r:4}));
+}
+function IconSchool(props){
+  return h('svg',{...props,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor","stroke-width":"1.8"},h('path',{d:"M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"}),h('polyline',{points:"9 22 9 12 15 12 15 22"}));
+}
+
+function UnderlineInput({type="text", placeholder, value, onChange, icon, autoComplete}){
+  return h('div',{className:"relative group"},
+    h('input',{
+      type, placeholder, value, onChange:e=>onChange(e.target.value),
+      autoComplete,
+      className:"underline-input w-full h-[48px] pr-9 pl-0 text-[15px] text-neutral-800 placeholder:text-neutral-400 focus:border-b-secondary-600",
+      required:true
+    }),
+    h('span',{className:"absolute right-0 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-secondary-600 transition-colors pointer-events-none"}, icon)
+  );
+}
+
+function App(){
+  const [isLogin,setIsLogin]=useState(true);
+  const [loginForm,setLoginForm]=useState({email:"",password:""});
+  const [registerForm,setRegisterForm]=useState({school:"",name:"",email:"",password:""});
+  const [loading,setLoading]=useState(false);
+
+  function handleLogin(e){
+    e.preventDefault(); setLoading(true);
+    setTimeout(()=>{ setLoading(false); alert("Login: "+JSON.stringify(loginForm)); }, 800);
+  }
+  function handleRegister(e){
+    e.preventDefault(); setLoading(true);
+    setTimeout(()=>{ setLoading(false); alert("Register: "+JSON.stringify(registerForm)); }, 800);
+  }
+
+  return h('div',{className:"w-full max-w-[900px]"},
+    h('div',{className:"relative w-full h-[560px] md:h-[520px] bg-white rounded-[20px] overflow-hidden glow-border flex shadow-2xl"},
+
+      // ----- FORMS LAYER (behind gradient panel) -----
+      // Left half (Login form visible when isLogin, Register when not)
+      h('div',{className:"absolute inset-0 flex"},
+
+        // Left side container (holds Login form when isLogin, Register form when !isLogin via crossfade)
+        h('div',{className:"w-1/2 h-full relative flex items-center justify-center p-8 md:p-10 bg-white"},
+
+          // Login Form
+          h('div',{className:`absolute inset-0 p-8 md:p-10 flex flex-col justify-center transition-opacity duration-[600ms] ease-in-out ${isLogin?"opacity-100 pointer-events-auto":"opacity-0 pointer-events-none"}`},
+            h('div',{className:"w-full max-w-[300px] mx-auto"},
+              h('h2',{className:"text-2xl font-bold tracking-tight text-neutral-800"},"Login"),
+              h('p',{className:"mt-1 text-xs text-neutral-500"},"Welcome back to LearnCloud"),
+              h('form',{onSubmit:handleLogin,className:"mt-8 space-y-6"},
+                h(UnderlineInput,{type:"email",placeholder:"Email",value:loginForm.email,onChange:v=>setLoginForm({...loginForm,email:v}),autoComplete:"email",icon:h(IconMail,{width:18,height:18})}),
+                h(UnderlineInput,{type:"password",placeholder:"Password",value:loginForm.password,onChange:v=>setLoginForm({...loginForm,password:v}),autoComplete:"current-password",icon:h(IconLock,{width:18,height:18})}),
+                h('div',{className:"flex justify-end"},h('a',{href:"#",className:"text-xs text-neutral-500 hover:text-secondary-600 underline underline-offset-4"},"Forgot password?")),
+                h('button',{type:"submit",disabled:loading,className:"w-full h-12 rounded-full bg-primary-800 text-white text-sm font-semibold tracking-wide hover:bg-primary-900 active:scale-[0.98] transition-all disabled:opacity-60 min-h-touch shadow-lg shadow-primary-800/20"}, loading?"Signing in...":"Login")
+              ),
+              h('p',{className:"mt-6 text-center text-xs text-neutral-500"},"Don't have account? ",h('button',{onClick:()=>setIsLogin(false),className:"font-medium text-secondary-600 hover:text-secondary-700 underline underline-offset-4"},"Register"))
+            )
+          ),
+
+          // Register Form (crossfade opposite)
+          h('div',{className:`absolute inset-0 p-8 md:p-10 flex flex-col justify-center transition-opacity duration-[600ms] ease-in-out ${!isLogin?"opacity-100 pointer-events-auto":"opacity-0 pointer-events-none"}`},
+            h('div',{className:"w-full max-w-[300px] mx-auto"},
+              h('h2',{className:"text-2xl font-bold tracking-tight text-neutral-800"},"Register"),
+              h('p',{className:"mt-1 text-xs text-neutral-500"},"Create your school account"),
+              h('form',{onSubmit:handleRegister,className:"mt-6 space-y-5"},
+                h(UnderlineInput,{type:"text",placeholder:"School name",value:registerForm.school,onChange:v=>setRegisterForm({...registerForm,school:v}),icon:h(IconSchool,{width:18,height:18})}),
+                h(UnderlineInput,{type:"text",placeholder:"Contact name",value:registerForm.name,onChange:v=>setRegisterForm({...registerForm,name:v}),icon:h(IconUser,{width:18,height:18})}),
+                h(UnderlineInput,{type:"email",placeholder:"Email",value:registerForm.email,onChange:v=>setRegisterForm({...registerForm,email:v}),autoComplete:"email",icon:h(IconMail,{width:18,height:18})}),
+                h(UnderlineInput,{type:"password",placeholder:"Password",value:registerForm.password,onChange:v=>setRegisterForm({...registerForm,password:v}),autoComplete:"new-password",icon:h(IconLock,{width:18,height:18})}),
+                h('button',{type:"submit",disabled:loading,className:"w-full h-12 rounded-full bg-primary-800 text-white text-sm font-semibold tracking-wide hover:bg-primary-900 active:scale-[0.98] transition-all disabled:opacity-60 min-h-touch shadow-lg shadow-primary-800/20"}, loading?"Creating...":"Create account")
+              ),
+              h('p',{className:"mt-5 text-center text-xs text-neutral-500"},"Already have account? ",h('button',{onClick:()=>setIsLogin(true),className:"font-medium text-secondary-600 hover:text-secondary-700 underline underline-offset-4"},"Login"))
+            )
+          )
+        ),
+
+        // Right side container (holds Register form when isLogin, Login when !isLogin - mirrored for crossfade effect)
+        h('div',{className:"w-1/2 h-full relative flex items-center justify-center p-8 md:p-10 bg-white"},
+
+          // When isLogin, right side shows Register form faded? Actually we want crossfade of panels, but we have two sides each with both forms crossfading.
+          // Simpler: Right side Login form when !isLogin (i.e., when gradient on right, login on left? Wait)
+          // To keep crossfade working, we duplicate logic: Right side shows opposite of left
+
+          h('div',{className:`absolute inset-0 p-8 md:p-10 flex flex-col justify-center transition-opacity duration-[600ms] ease-in-out ${!isLogin?"opacity-100 pointer-events-auto":"opacity-0 pointer-events-none"}`},
+            h('div',{className:"w-full max-w-[300px] mx-auto"},
+              h('h2',{className:"text-2xl font-bold tracking-tight text-neutral-800"},"Login"),
+              h('p',{className:"mt-1 text-xs text-neutral-500"},"Welcome back to LearnCloud"),
+              h('form',{onSubmit:handleLogin,className:"mt-8 space-y-6"},
+                h(UnderlineInput,{type:"email",placeholder:"Email",value:loginForm.email,onChange:v=>setLoginForm({...loginForm,email:v}),icon:h(IconMail,{width:18,height:18})}),
+                h(UnderlineInput,{type:"password",placeholder:"Password",value:loginForm.password,onChange:v=>setLoginForm({...loginForm,password:v}),icon:h(IconLock,{width:18,height:18})}),
+                h('button',{type:"submit",disabled:loading,className:"w-full h-12 rounded-full bg-primary-800 text-white text-sm font-semibold tracking-wide hover:bg-primary-900 transition-all disabled:opacity-60 min-h-touch"}, loading?"Signing in...":"Login")
+              ),
+              h('p',{className:"mt-6 text-center text-xs text-neutral-500"},"Don't have account? ",h('button',{onClick:()=>setIsLogin(false),className:"font-medium text-secondary-600 hover:underline"},"Register"))
+            )
+          ),
+
+          h('div',{className:`absolute inset-0 p-8 md:p-10 flex flex-col justify-center transition-opacity duration-[600ms] ease-in-out ${isLogin?"opacity-100 pointer-events-auto":"opacity-0 pointer-events-none"}`},
+            h('div',{className:"w-full max-w-[300px] mx-auto"},
+              h('h2',{className:"text-2xl font-bold tracking-tight text-neutral-800"},"Register"),
+              h('p',{className:"mt-1 text-xs text-neutral-500"},"Create your school account"),
+              h('form',{onSubmit:handleRegister,className:"mt-6 space-y-5"},
+                h(UnderlineInput,{type:"text",placeholder:"School name",value:registerForm.school,onChange:v=>setRegisterForm({...registerForm,school:v}),icon:h(IconSchool,{width:18,height:18})}),
+                h(UnderlineInput,{type:"text",placeholder:"Contact name",value:registerForm.name,onChange:v=>setRegisterForm({...registerForm,name:v}),icon:h(IconUser,{width:18,height:18})}),
+                h(UnderlineInput,{type:"email",placeholder:"Email",value:registerForm.email,onChange:v=>setRegisterForm({...registerForm,email:v}),icon:h(IconMail,{width:18,height:18})}),
+                h(UnderlineInput,{type:"password",placeholder:"Password",value:registerForm.password,onChange:v=>setRegisterForm({...registerForm,password:v}),icon:h(IconLock,{width:18,height:18})}),
+                h('button',{type:"submit",className:"w-full h-12 rounded-full bg-primary-800 text-white text-sm font-semibold"}, "Create account")
+              ),
+              h('p',{className:"mt-5 text-center text-xs text-neutral-500"},"Already have account? ",h('button',{onClick:()=>setIsLogin(true),className:"font-medium text-secondary-600 hover:underline"},"Login"))
+            )
+          )
+        )
+      ),
+
+      // ----- GRADIENT PANEL WITH DIAGONAL DIVIDER THAT SLIDES -----
+      h('div',{
+        className:`absolute top-0 h-full w-[55%] z-10 flex items-center justify-center p-8 md:p-10 text-white transition-all duration-[600ms] ease-in-out
+          ${isLogin?"left-0 diagonal-left":"left-[45%] diagonal-right"} 
+          bg-gradient-to-br from-[#0F153A] via-[#5F3F96] to-[#307EC0]`,
+        style:{transitionTimingFunction:"cubic-bezier(0.65, 0, 0.35, 1)"}
+      },
+        // Inner content crossfades too
+        h('div',{className:"w-full max-w-[300px] mx-auto text-center transition-opacity duration-300", style:{opacity:1}},
+
+          isLogin ?
+            h('div',{key:"login-panel",className:"transition-opacity duration-[400ms]"},
+              h('h2',{className:"text-3xl font-extrabold tracking-tight leading-tight"},"Welcome back!"),
+              h('p',{className:"mt-3 text-sm leading-relaxed text-white/80"},"Sign in to continue to LearnCloud — fees collected, reports ready, parents informed before lunch. Built in Bulawayo for schools 150–2,000 learners."),
+              h('div',{className:"mt-8"},
+                h('p',{className:"text-xs text-white/60 mb-3"},"Don't have an account?"),
+                h('button',{onClick:()=>setIsLogin(false),className:"w-full h-11 rounded-full border border-white/30 bg-white/10 hover:bg-white/15 text-white text-sm font-medium backdrop-blur transition min-h-touch"},"Create school account")
+              ),
+              h('div',{className:"mt-10 text-[10px] text-white/40"},"Petra High • Bulawayo • #0F153A")
+            )
+            :
+            h('div',{key:"register-panel",className:"transition-opacity duration-[400ms]"},
+              h('h2',{className:"text-3xl font-extrabold tracking-tight leading-tight"},"Hello, friend!"),
+              h('p',{className:"mt-3 text-sm leading-relaxed text-white/80"},"Enter your school details and start your 14-day trial — no card, clear pricing, data never deleted. Setup wizard 9 steps, time-to-first-invoice 45 min."),
+              h('div',{className:"mt-8"},
+                h('p',{className:"text-xs text-white/60 mb-3"},"Already have an account?"),
+                h('button',{onClick:()=>setIsLogin(true),className:"w-full h-11 rounded-full bg-white text-primary-800 text-sm font-semibold hover:bg-neutral-50 transition min-h-touch shadow-lg"},"Sign in")
+              ),
+              h('div',{className:"mt-10 text-[10px] text-white/40"},"14-day trial • 30-day read-only after expiry • HQ Bulawayo")
+            )
+        ),
+
+        // Decorative blurred circles inside gradient panel
+        h('div',{className:"absolute -top-20 -right-20 w-64 h-64 rounded-full blur-[50px] bg-white/10 pointer-events-none"}),
+        h('div',{className:"absolute -bottom-20 -left-20 w-64 h-64 rounded-full blur-[50px] bg-[#BC92CD]/20 pointer-events-none"})
+      )
+    ),
+
+    h('div',{className:"mt-6 text-center text-[11px] text-white/30"},"Glowing border in accent #844CAD • Diagonal skewed divider not straight vertical • 600ms ease-in-out slide • Underline-only inputs with trailing icon • Full-width pill button • Near-black #070A0F background")
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(h(App));
+</script>
+</body>
+</html>

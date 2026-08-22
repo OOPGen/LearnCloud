@@ -1,0 +1,52 @@
+# LearnCloud API - Multi-stage, small, non-root
+# Stage 1: Build
+FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build
+WORKDIR /src
+# Copy csproj and restore as distinct layers for cache
+COPY src/LearnCloud.Auth/*.csproj src/LearnCloud.Auth/
+COPY src/LearnCloud.MultiTenancy/*.csproj src/LearnCloud.MultiTenancy/
+COPY src/LearnCloud.SetupWizard/*.csproj src/LearnCloud.SetupWizard/
+COPY src/LearnCloud.AttendanceTimetable/*.csproj src/LearnCloud.AttendanceTimetable/
+COPY src/LearnCloud.TeacherPortal/*.csproj src/LearnCloud.TeacherPortal/
+COPY src/LearnCloud.Fees/*.csproj src/LearnCloud.Fees/
+COPY src/LearnCloud.PlatformBilling/*.csproj src/LearnCloud.PlatformBilling/
+COPY src/LearnCloud.Messaging/*.csproj src/LearnCloud.Messaging/
+COPY src/LearnCloud.Api/*.csproj src/LearnCloud.Api/
+COPY *.sln ./
+RUN dotnet restore src/LearnCloud.Api/LearnCloud.Api.csproj
+
+# Copy everything and build
+COPY . .
+WORKDIR /src/src/LearnCloud.Api
+RUN dotnet publish -c Release -o /app/publish /p:UseAppHost=false --no-restore
+
+# Stage 2: Runtime - small, non-root
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-alpine AS runtime
+WORKDIR /app
+# Create non-root user
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+# Install curl for healthcheck
+RUN apk add --no-cache curl icu-libs
+
+# Copy published app
+COPY --from=build /app/publish .
+
+# Ensure non-root owns app files
+RUN chown -R appuser:appgroup /app
+
+# Environment - safe defaults, real secrets via env file outside repo
+ENV ASPNETCORE_URLS=http://+:8080
+ENV ASPNETCORE_ENVIRONMENT=Production
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+
+# Non-root
+USER appuser
+
+EXPOSE 8080
+
+# Health check - /health endpoint must exist in API
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD curl -f http://localhost:8080/health || exit 1
+
+ENTRYPOINT ["dotnet", "LearnCloud.Api.dll"]

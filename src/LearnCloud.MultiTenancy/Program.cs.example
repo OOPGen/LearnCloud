@@ -1,0 +1,42 @@
+// Program.cs.example - Correct middleware ordering for multi-tenancy freeze
+
+using LearnCloud.MultiTenancy.Context;
+using LearnCloud.MultiTenancy.Extensions;
+using LearnCloud.MultiTenancy.Middleware;
+using LearnCloud.Auth.Extensions; // from previous auth module
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddLearnCloudMultiTenancy(builder.Configuration);
+builder.Services.AddLearnCloudAuth(builder.Configuration); // JWT, hasher, etc.
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+
+var app = builder.Build();
+
+app.UseExceptionHandler("/error");
+app.UseHttpsRedirection();
+app.UseStaticFiles();
+
+// CRITICAL ORDER - freeze after acceptance
+app.UseRouting();
+app.UseRateLimiter(); // from auth module: login 5/min etc
+app.UseAuthentication(); // JWT validates tid claim
+app.UseMiddleware<TenantResolutionMiddleware>(); // AFTER auth, BEFORE authz - checks subdomain vs token mismatch 403 + logs security event, resolves tenant from subdomain for anonymous login
+app.UseAuthorization();
+
+app.MapControllers();
+app.MapGet("/health", () => Results.Ok(new { status="ok", tenant="resolved", time=DateTime.UtcNow }));
+
+// Example platform route that requires explicit no-tenant scope
+// app.MapGet("/api/platform/tenants", async (LearnCloudDbContext db, INoTenantOperation noTenantOp, ITenantContext tenantContext, HttpContext http) =>
+// {
+//     var userId = http.User.FindFirst("uid")?.Value;
+//     using var scope = noTenantOp.BeginScope("Platform dashboard listing all tenants", long.Parse(userId!), "PLATFORM_SUPERADMIN");
+//     var tenants = await db.Tenants.IgnoreQueryFilters().Where(t=>!t.IsDeleted).ToListAsync();
+//     return Results.Ok(tenants);
+// }).RequireAuthorization("PLATFORM_SUPERADMIN");
+
+app.Run();
+
+public partial class Program {}

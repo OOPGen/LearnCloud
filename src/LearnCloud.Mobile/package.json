@@ -1,0 +1,38 @@
+{
+  "name": "learncloud-mobile",
+  "version": "1.0.0",
+  "description": "LearnCloud Mobile App - Parents first, teachers second, React Native, offline-first, small install size, biometric unlock",
+  "main": "App.jsx",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios"
+  },
+  "dependencies": {
+    "expo": "~51.0.0",
+    "expo-sqlite": "~14.0.0",
+    "expo-secure-store": "~13.0.0",
+    "expo-local-authentication": "~14.0.0",
+    "expo-notifications": "~0.28.0",
+    "expo-file-system": "~17.0.0",
+    "@react-navigation/native": "^6.1.0",
+    "@react-navigation/bottom-tabs": "^6.5.0",
+    "@react-navigation/native-stack": "^6.9.0",
+    "@react-native-community/netinfo": "11.2.1",
+    "react": "18.2.0",
+    "react-native": "0.74.1"
+  },
+  "expo": {
+    "name": "LearnCloud",
+    "slug": "learncloud-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "splash": { "image": "./assets/splash.png", "resizeMode": "contain", "backgroundColor": "#0F153A" },
+    "assetBundlePatterns": ["**/*"],
+    "ios": { "supportsTablet": true, "bundleIdentifier": "co.zw.learncloud.mobile" },
+    "android": { "adaptiveIcon": { "foregroundImage": "./assets/adaptive-icon.png", "backgroundColor": "#0F153A" }, "package": "co.zw.learncloud.mobile" },
+    "plugins": ["expo-local-authentication", "expo-secure-store"],
+    "extra": { "eas": { "projectId": "learncloud-mobile" } }
+  }
+}

@@ -1,0 +1,29 @@
+# LearnCloud Backup Service - nightly encrypted MySQL logical backup + object storage sync
+FROM alpine:3.19
+
+RUN apk add --no-cache mysql-client bash curl gnupg coreutils tzdata rclone || apk add --no-cache mysql-client bash curl gnupg coreutils tzdata
+
+# Create non-root user for backup (needs to read DB via network, write to /backups)
+RUN addgroup -S backupgroup && adduser -S backupuser -G backupgroup
+
+WORKDIR /home/backupuser
+
+# Copy backup scripts
+COPY deployment/scripts/backup.sh /usr/local/bin/backup.sh
+COPY deployment/scripts/verify-backup.sh /usr/local/bin/verify-backup.sh
+COPY deployment/scripts/restore.sh /usr/local/bin/restore.sh
+RUN chmod +x /usr/local/bin/backup.sh /usr/local/bin/verify-backup.sh /usr/local/bin/restore.sh
+
+# Create backup dirs
+RUN mkdir -p /backups /backups/tmp && chown -R backupuser:backupgroup /backups /home/backupuser
+
+USER backupuser
+
+# Health check: last backup file exists and is recent (< 26h)
+HEALTHCHECK --interval=3600s --timeout=10s --start-period=60s --retries=2 \
+  CMD sh -c 'find /backups -name "*.gpg" -type f -mmin -1560 | grep -q . || exit 1'
+
+# Default command runs cron-like loop: backup nightly at 02:00 CAT (00:00 UTC)
+# In production docker-compose, we override command to run cron
+# For simplicity, entrypoint loops: sleep until 02:00 CAT then backup
+ENTRYPOINT ["/bin/bash", "-c", "while true; do /usr/local/bin/backup.sh; echo \"Sleeping 24h\"; sleep 86400; done"]

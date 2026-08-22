@@ -1,0 +1,37 @@
+// Program.cs - Example wiring for LearnCloud Auth Module (.NET 8)
+using LearnCloud.Auth.Extensions;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// Config example (add to appsettings.json)
+/*
+{
+  "ConnectionStrings": { "Default": "Server=localhost;Database=learncloud;User=root;Password=root;CharSet=utf8mb4;" },
+  "Jwt": { "Secret": "super-secret-key-must-be-32+chars-long-for-HS256!!", "Issuer": "LearnCloud", "Audience": "LearnCloud", "AccessTokenLifetimeMinutes": 15, "RefreshTokenLifetimeDays": 14 },
+  "PasswordPolicy": { "RequiredLength": 8, "MaxFailedAccessAttempts": 5, "LockoutMinutes": 15, "EmailVerificationTokenHours": 24, "PasswordResetTokenHours": 2 },
+  "RateLimit": { "LoginPermitLimit": 5, "LoginWindowSeconds": 60 }
+}
+*/
+
+builder.Services.AddLearnCloudAuth(builder.Configuration);
+
+var app = builder.Build();
+
+app.UseHttpsRedirection();
+app.UseLearnCloudAuth(); // adds RateLimiter + Auth + Authz
+
+app.MapControllers();
+app.MapGet("/", () => "LearnCloud Auth API - Bulawayo HQ - /api/auth/*");
+app.MapGet("/health", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow }));
+
+// Auto migrate on startup (demo only - use proper migration in prod)
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<LearnCloud.Auth.Services.AuthDbContext>();
+    // db.Database.Migrate(); // enable when using real MySQL migrations
+}
+
+app.Run();
+
+// For WebApplicationFactory to find Program
+public partial class Program {}

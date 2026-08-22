@@ -1,0 +1,252 @@
+name: LearnCloud CI/CD - Build, Test, Tenant Isolation, Migrate, Deploy, Rollback on Failure
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  NODE_VERSION: '20'
+  REGISTRY: ghcr.io
+  IMAGE_NAME_API: ghcr.io/${{ github.repository }}/api
+  IMAGE_NAME_WEB: ghcr.io/${{ github.repository }}/web
+  IMAGE_NAME_BACKUP: ghcr.io/${{ github.repository }}/backup
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: learncloud_test
+          MYSQL_USER: learncloud
+          MYSQL_PASSWORD: learncloud_test_pw
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping -h localhost -proot" --health-interval=10s --health-timeout=5s --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: --health-cmd="redis-cli ping" --health-interval=10s --health-timeout=5s --health-retries=5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Restore .NET
+        run: dotnet restore
+
+      - name: Build .NET
+        run: dotnet build --no-restore -c Release
+
+      - name: Run Unit Tests - Fee Calculation (cent-exact)
+        run: dotnet test src/LearnCloud.Fees/Tests/FeeCalculationServiceTests.cs --logger "trx" -c Release
+        env:
+          ConnectionStrings__Default: "Server=127.0.0.1;Database=learncloud_test;User=learncloud;Password=learncloud_test_pw;"
+
+      - name: Run Unit Tests - Subscription State Machine Every Transition
+        run: dotnet test src/LearnCloud.PlatformBilling/Tests/SubscriptionStateMachineTests.cs --logger "trx" -c Release
+
+      - name: Run Unit Tests - Attendance & Timetable Clash
+        run: dotnet test src/LearnCloud.AttendanceTimetable/Tests/AttendanceTimetableTests.cs --logger "trx" -c Release
+
+      - name: Run Tenant Isolation Suite - THE GATE (freeze after acceptance)
+        run: dotnet test tests/MultiTenancyIsolationTests.cs --logger "trx;LogFileName=tenant-isolation.trx" -c Release --filter "MultiTenancy"
+        env:
+          ConnectionStrings__Default: "Server=127.0.0.1;Database=learncloud_test;User=learncloud;Password=learncloud_test_pw;"
+
+      - name: Check Tenant Isolation Results - FAIL if not proven
+        run: |
+          if grep -q "Failed" TestResults/*.trx 2>/dev/null; then
+            echo "Tenant isolation tests failed - BLOCKING deploy"
+            exit 1
+          fi
+          echo "Tenant isolation proven - proceed"
+
+      - name: Build Marketing Site
+        run: |
+          cd marketing-site
+          # If you have npm build: npm ci && npm run build
+          # For static HTML, just verify index.html exists
+          ls -lh index.html
+          # Check no heavy libs
+          if grep -q "revolutionary\|cutting-edge\|seamless\|empower" index.html; then
+            echo "Banned words found in marketing copy"
+            exit 1
+          fi
+
+      - name: Build Docker Images
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+          docker build -f deployment/docker/Dockerfile.api -t ${{ env.IMAGE_NAME_API }}:${{ github.sha }} -t ${{ env.IMAGE_NAME_API }}:latest .
+          docker build -f deployment/docker/Dockerfile.web -t ${{ env.IMAGE_NAME_WEB }}:${{ github.sha }} -t ${{ env.IMAGE_NAME_WEB }}:latest .
+          docker build -f deployment/docker/Dockerfile.backup -t ${{ env.IMAGE_NAME_BACKUP }}:${{ github.sha }} -t ${{ env.IMAGE_NAME_BACKUP }}:latest .
+
+      - name: Push Docker Images
+        if: github.ref == 'refs/heads/main'
+        run: |
+          docker push ${{ env.IMAGE_NAME_API }}:${{ github.sha }}
+          docker push ${{ env.IMAGE_NAME_API }}:latest
+          docker push ${{ env.IMAGE_NAME_WEB }}:${{ github.sha }}
+          docker push ${{ env.IMAGE_NAME_WEB }}:latest
+          docker push ${{ env.IMAGE_NAME_BACKUP }}:${{ github.sha }}
+          docker push ${{ env.IMAGE_NAME_BACKUP }}:latest
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: "**/TestResults/*.trx"
+
+  migrate:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main'
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: learncloud_test
+          MYSQL_USER: learncloud
+          MYSQL_PASSWORD: learncloud_test_pw
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping -h localhost -proot" --health-interval=10s --health-timeout=5s --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Run EF Migrations Dry-Run
+        run: |
+          dotnet ef migrations list --project src/LearnCloud.MultiTenancy/ || echo "No EF migrations, using SQL files"
+          # Apply SQL migrations in order to test DB
+          for f in src/LearnCloud.Auth/Migrations/*.sql src/LearnCloud.MultiTenancy/Migrations/*.sql src/LearnCloud.AttendanceTimetable/Migrations/*.sql src/LearnCloud.Fees/Migrations/*.sql src/LearnCloud.PlatformBilling/Migrations/*.sql src/LearnCloud.Messaging/Migrations/*.sql; do
+            if [ -f "$f" ]; then
+              echo "Applying $f to test DB"
+              mysql -h 127.0.0.1 -u learncloud -plearncloud_test_pw learncloud_test < "$f" || { echo "Migration $f failed"; exit 1; }
+            fi
+          done
+        env:
+          ConnectionStrings__Default: "Server=127.0.0.1;Database=learncloud_test;User=learncloud;Password=learncloud_test_pw;"
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [build-and-test, migrate]
+    if: github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Deploy to Single Server - Zero Downtime
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          echo "Deploying $IMAGE_TAG to $SERVER_USER@$SERVER_HOST"
+          ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_HOST << EOF
+            set -e
+            cd /opt/learncloud
+            # Backup current .env.production
+            cp /opt/learncloud/.env.production /opt/learncloud/.env.production.backup.\$(date +%Y%m%d%H%M%S)
+
+            # Pull new images
+            echo "Pulling images $IMAGE_TAG"
+            export IMAGE_TAG=$IMAGE_TAG
+            docker compose -f deployment/docker-compose.yml pull || docker compose -f deployment/docker-compose.yml build
+
+            # Save current running images for rollback
+            docker images --format "{{.Repository}}:{{.Tag}} {{.ID}}" | grep learncloud > /tmp/prev_images.txt || true
+
+            # Zero downtime: start new api with --no-deps and health check
+            echo "Starting new API with zero downtime..."
+            docker compose -f deployment/docker-compose.yml up -d --no-deps --force-recreate api
+
+            # Wait for new api healthy (30s)
+            for i in {1..30}; do
+              if docker inspect --format='{{json .State.Health.Status}}' learncloud-api | grep -q healthy; then
+                echo "New API healthy"
+                break
+              fi
+              echo "Waiting for API healthy... \$i"
+              sleep 2
+            done
+
+            # Check if healthy, if not rollback
+            if ! docker inspect --format='{{json .State.Health.Status}}' learncloud-api | grep -q healthy; then
+              echo "New API failed health check - rolling back!"
+              # Rollback to previous images
+              cat /tmp/prev_images.txt
+              # Restore previous .env if needed
+              # docker compose down and up with old tag
+              export IMAGE_TAG=latest
+              docker compose -f deployment/docker-compose.yml up -d --no-deps --force-recreate api
+              exit 1
+            fi
+
+            # Full stack up (web, nginx will reload)
+            docker compose -f deployment/docker-compose.yml up -d web nginx backup
+
+            # Apply migrations on live (with transaction check)
+            echo "Applying migrations live..."
+            # For EF: dotnet ef database update --connection "\$ConnectionStrings__Default" --project src/LearnCloud.Api
+            # For SQL files: we apply only new migrations not yet applied - we keep migrations table
+            # Simplified: run migration script that checks migrations table
+            ./deployment/scripts/migrate-live.sh || { echo "Migration failed - rolling back"; export IMAGE_TAG=latest; docker compose -f deployment/docker-compose.yml up -d --no-deps --force-recreate api; exit 1; }
+
+            # Reload nginx for new web
+            docker exec learncloud-nginx nginx -s reload || true
+
+            echo "Deploy SUCCESS $IMAGE_TAG"
+          EOF
+
+      - name: Post-Deploy Health Check
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_HOST "curl -f https://learncloud.co.zw/health && curl -f https://learncloud.co.zw/api/health || exit 1"
+          echo "Health check passed"
+
+      - name: Rollback on Failure (if health check fails)
+        if: failure()
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+        run: |
+          echo "Deploy failed, rolling back to latest stable"
+          ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_HOST << 'EOF'
+            cd /opt/learncloud
+            export IMAGE_TAG=latest
+            docker compose -f deployment/docker-compose.yml up -d --force-recreate api web nginx
+            echo "Rolled back to latest"
+          EOF

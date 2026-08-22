@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+    <PackageReference Include="Serilog.AspNetCore" Version="8.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="5.0.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="5.1.0" />
+    <PackageReference Include="Serilog.Formatting.Compact" Version="2.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LearnCloud.AI\LearnCloud.AI.csproj" />
+    <ProjectReference Include="..\LearnCloud.Analytics\LearnCloud.Analytics.csproj" />
+    <ProjectReference Include="..\LearnCloud.AttendanceTimetable\LearnCloud.AttendanceTimetable.csproj" />
+    <ProjectReference Include="..\LearnCloud.Auth\LearnCloud.Auth.csproj" />
+    <ProjectReference Include="..\LearnCloud.Communication\LearnCloud.Communication.csproj" />
+    <ProjectReference Include="..\LearnCloud.Core\LearnCloud.Core.csproj" />
+    <ProjectReference Include="..\LearnCloud.Examinations\LearnCloud.Examinations.csproj" />
+    <ProjectReference Include="..\LearnCloud.Fees\LearnCloud.Fees.csproj" />
+    <ProjectReference Include="..\LearnCloud.Finance\LearnCloud.Finance.csproj" />
+    <ProjectReference Include="..\LearnCloud.HR\LearnCloud.HR.csproj" />
+    <ProjectReference Include="..\LearnCloud.Hostel\LearnCloud.Hostel.csproj" />
+    <ProjectReference Include="..\LearnCloud.Library\LearnCloud.Library.csproj" />
+    <ProjectReference Include="..\LearnCloud.Messaging\LearnCloud.Messaging.csproj" />
+    <ProjectReference Include="..\LearnCloud.Mobile\LearnCloud.Mobile.csproj" />
+    <ProjectReference Include="..\LearnCloud.MultiTenancy\LearnCloud.MultiTenancy.csproj" />
+    <ProjectReference Include="..\LearnCloud.OnlinePayments\LearnCloud.OnlinePayments.csproj" />
+    <ProjectReference Include="..\LearnCloud.ParentPortal\LearnCloud.ParentPortal.csproj" />
+    <ProjectReference Include="..\LearnCloud.PlatformAdmin\LearnCloud.PlatformAdmin.csproj" />
+    <ProjectReference Include="..\LearnCloud.PlatformBilling\LearnCloud.PlatformBilling.csproj" />
+    <ProjectReference Include="..\LearnCloud.SetupWizard\LearnCloud.SetupWizard.csproj" />
+    <ProjectReference Include="..\LearnCloud.StudentPortal\LearnCloud.StudentPortal.csproj" />
+    <ProjectReference Include="..\LearnCloud.TeacherPortal\LearnCloud.TeacherPortal.csproj" />
+    <ProjectReference Include="..\LearnCloud.Transport\LearnCloud.Transport.csproj" />
+  </ItemGroup>
+
+</Project>

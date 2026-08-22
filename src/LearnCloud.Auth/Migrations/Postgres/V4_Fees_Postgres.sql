@@ -1,0 +1,307 @@
+-- Translated from MySQL V4_Fees.sql to PostgreSQL (Supabase Compatible)
+-- Original: /home/user/src/LearnCloud.Fees/Migrations/V4_Fees.sql
+-- Translated: /home/user/src/LearnCloud.Auth/Migrations/Postgres/V4_Fees_Postgres.sql
+-- Date: 2026-08-09
+-- Note: Manual review needed for ENUM->VARCHAR, generated columns, partitioning
+
+-- LearnCloud Fees Module V4 - Money critical, decimal(18,2) + currency, tenant_id leading indexes
+-- Scope: billing learners only
+
+CREATE TABLE IF NOT EXISTS fee_items (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  code VARCHAR(20) NOT NULL,
+  recurrence INT NOT NULL DEFAULT 1 COMMENT '1=PerTerm,2=PerYear,3=OneOff',
+  is_proratable BOOLEAN NOT NULL DEFAULT 0,
+  is_optional BOOLEAN NOT NULL DEFAULT 0,
+  gl_code VARCHAR(50) NULL,
+  description VARCHAR(255) NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by BIGINT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() ,
+  updated_by BIGINT NULL,
+  is_deleted BOOLEAN NOT NULL DEFAULT 0,
+  deleted_at TIMESTAMPTZ NULL,
+  deleted_by BIGINT NULL,
+  CONSTRAINT fk_fee_items_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_fee_items_tenant_code (tenant_id, code),
+  KEY idx_fee_items_tenant (tenant_id)
+);
+
+CREATE TABLE IF NOT EXISTS fee_structures (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  academic_year_id BIGINT NOT NULL,
+  term_id BIGINT NOT NULL,
+  grade_id BIGINT NULL,
+  stream_id BIGINT NULL,
+  student_id BIGINT NULL COMMENT 'individual override',
+  status VARCHAR(20) NOT NULL DEFAULT 'draft',
+  currency CHAR(3) NOT NULL DEFAULT 'USD',
+  is_mandatory BOOLEAN NOT NULL DEFAULT 1,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by BIGINT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() ,
+  updated_by BIGINT NULL,
+  is_deleted BOOLEAN NOT NULL DEFAULT 0,
+  deleted_at TIMESTAMPTZ NULL,
+  deleted_by BIGINT NULL,
+  CONSTRAINT fk_fee_struct_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  KEY idx_fee_struct_tenant_year_term (tenant_id, academic_year_id, term_id),
+  KEY idx_fee_struct_tenant_grade_stream (tenant_id, grade_id, stream_id),
+  KEY idx_fee_struct_tenant_student (tenant_id, student_id)
+);
+
+CREATE TABLE IF NOT EXISTS fee_structure_items (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL,
+  fee_structure_id BIGINT NOT NULL,
+  fee_item_id BIGINT NOT NULL,
+  description VARCHAR(255) NOT NULL,
+  amount DECIMAL(18,2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'USD',
+  quantity INT NOT NULL DEFAULT 1,
+  line_total DECIMAL(18,2) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by BIGINT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() ,
+  updated_by BIGINT NULL,
+  is_deleted BOOLEAN NOT NULL DEFAULT 0,
+  deleted_at TIMESTAMPTZ NULL,
+  deleted_by BIGINT NULL,
+  CONSTRAINT fk_fsi_structure FOREIGN KEY (fee_structure_id) REFERENCES fee_structures(id) ON DELETE CASCADE,
+  CONSTRAINT fk_fsi_fee_item FOREIGN KEY (fee_item_id) REFERENCES fee_items(id) ON DELETE RESTRICT,
+  KEY idx_fsi_tenant_structure (tenant_id, fee_structure_id)
+);
+
+CREATE TABLE IF NOT EXISTS discounts (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL,
+  student_id BIGINT NOT NULL,
+  academic_year_id BIGINT NOT NULL,
+  term_id BIGINT NOT NULL,
+  type INT NOT NULL COMMENT '1=Percentage,2=Fixed',
+  value DECIMAL(18,2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'USD',
+  applies_to_fee_item_ids_json JSONB NULL,
+  reason VARCHAR(255) NOT NULL,
+  approver_user_id BIGINT NOT NULL,
+  approved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  status VARCHAR(20) NOT NULL DEFAULT 'approved',
+  effective_from DATE NULL,
+  effective_to DATE NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by BIGINT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() ,
+  updated_by BIGINT NULL,
+  is_deleted BOOLEAN NOT NULL DEFAULT 0,
+  deleted_at TIMESTAMPTZ NULL,
+  deleted_by BIGINT NULL,
+  CONSTRAINT fk_discount_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  KEY idx_discount_tenant_student_year_term (tenant_id, student_id, academic_year_id, term_id),
+  KEY idx_discount_tenant_status (tenant_id, status)
+);
+
+CREATE TABLE IF NOT EXISTS invoice_sequences (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL,
+  year INT NOT NULL,
+  last_number INT NOT NULL DEFAULT 0,
+  prefix VARCHAR(10) NOT NULL DEFAULT 'INV',
+  format VARCHAR(50) NOT NULL DEFAULT '{prefix}-{year}-{number:5}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() ,
+  is_deleted BOOLEAN NOT NULL DEFAULT 0,
+  UNIQUE KEY uq_inv_seq_tenant_year (tenant_id, year),
+  KEY idx_inv_seq_tenant (tenant_id)
+);
+
+CREATE TABLE IF NOT EXISTS receipt_sequences (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL,
+  year INT NOT NULL,
+  last_number INT NOT NULL DEFAULT 0,
+  prefix VARCHAR(10) NOT NULL DEFAULT 'REC',
+  format VARCHAR(50) NOT NULL DEFAULT '{prefix}-{year}-{number:5}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() ,
+  is_deleted BOOLEAN NOT NULL DEFAULT 0,
+  UNIQUE KEY uq_rec_seq_tenant_year (tenant_id, year)
+);
+
+CREATE TABLE IF NOT EXISTS fee_invoices (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL,
+  invoice_number VARCHAR(50) NOT NULL,
+  academic_year_id BIGINT NOT NULL,
+  term_id BIGINT NOT NULL,
+  student_id BIGINT NOT NULL,
+  enrolment_id BIGINT NULL,
+  fee_structure_id BIGINT NULL,
+  structure_hash VARCHAR(128) NOT NULL COMMENT 'hash of structure for idempotent generation',
+  subtotal_amount DECIMAL(18,2) NOT NULL,
+  discount_amount DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  total_amount DECIMAL(18,2) NOT NULL,
+  amount_paid DECIMAL(18,2) NOT NULL DEFAULT 0.00,
+  balance_due DECIMAL(18,2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'USD',
+  issue_date DATE NOT NULL,
+  due_date DATE NOT NULL,
+  status INT NOT NULL DEFAULT 2 COMMENT '1=Draft,2=Issued,3=Partial,4=Paid,5=Overdue,6=Void',
+  is_prorated BOOLEAN NOT NULL DEFAULT 0,
+  proration_note VARCHAR(255) NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by BIGINT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() ,
+  updated_by BIGINT NULL,
+  is_deleted BOOLEAN NOT NULL DEFAULT 0,
+  deleted_at TIMESTAMPTZ NULL,
+  deleted_by BIGINT NULL,
+  CONSTRAINT fk_fee_inv_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_fee_inv_tenant_number (tenant_id, invoice_number),
+  UNIQUE KEY uq_fee_inv_tenant_student_term_hash (tenant_id, student_id, academic_year_id, term_id, structure_hash),
+  KEY idx_fee_inv_tenant_student (tenant_id, student_id, academic_year_id, term_id),
+  KEY idx_fee_inv_tenant_status_due (tenant_id, status, due_date),
+  KEY idx_fee_inv_tenant_year_term (tenant_id, academic_year_id, term_id)
+);
+
+CREATE TABLE IF NOT EXISTS fee_invoice_items (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL,
+  invoice_id BIGINT NOT NULL,
+  fee_structure_item_id BIGINT NULL,
+  fee_item_id BIGINT NULL,
+  description VARCHAR(255) NOT NULL,
+  quantity INT NOT NULL DEFAULT 1,
+  unit_amount DECIMAL(18,2) NOT NULL,
+  line_total DECIMAL(18,2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'USD',
+  is_prorated BOOLEAN NOT NULL DEFAULT 0,
+  proration_detail VARCHAR(255) NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() ,
+  is_deleted BOOLEAN NOT NULL DEFAULT 0,
+  CONSTRAINT fk_fee_inv_item_inv FOREIGN KEY (invoice_id) REFERENCES fee_invoices(id) ON DELETE CASCADE,
+  KEY idx_fee_inv_item_tenant_invoice (tenant_id, invoice_id)
+);
+
+CREATE TABLE IF NOT EXISTS payments (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL,
+  student_id BIGINT NOT NULL,
+  amount DECIMAL(18,2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'USD',
+  method INT NOT NULL DEFAULT 1 COMMENT '1=Cash,2=Bank,3=EcoCash etc',
+  reference VARCHAR(100) NULL,
+  payment_date DATE NOT NULL,
+  receipt_number VARCHAR(50) NOT NULL,
+  proof_url VARCHAR(500) NULL,
+  status INT NOT NULL DEFAULT 2 COMMENT '1=Pending,2=Confirmed,3=Reversed',
+  reversed_by_payment_id BIGINT NULL,
+  original_payment_id BIGINT NULL,
+  reversal_reason VARCHAR(255) NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by BIGINT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() ,
+  updated_by BIGINT NULL,
+  is_deleted BOOLEAN NOT NULL DEFAULT 0,
+  deleted_at TIMESTAMPTZ NULL,
+  deleted_by BIGINT NULL,
+  CONSTRAINT fk_pay_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_pay_tenant_receipt (tenant_id, receipt_number),
+  KEY idx_pay_tenant_student_date (tenant_id, student_id, payment_date),
+  KEY idx_pay_tenant_reference (tenant_id, reference)
+);
+
+CREATE TABLE IF NOT EXISTS payment_allocations (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL,
+  payment_id BIGINT NOT NULL,
+  invoice_id BIGINT NOT NULL,
+  invoice_item_id BIGINT NULL,
+  allocated_amount DECIMAL(18,2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'USD',
+  is_manual_override BOOLEAN NOT NULL DEFAULT 0,
+  is_reversal BOOLEAN NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by BIGINT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() ,
+  updated_by BIGINT NULL,
+  is_deleted BOOLEAN NOT NULL DEFAULT 0,
+  deleted_at TIMESTAMPTZ NULL,
+  deleted_by BIGINT NULL,
+  CONSTRAINT fk_alloc_pay FOREIGN KEY (payment_id) REFERENCES payments(id) ON DELETE CASCADE,
+  CONSTRAINT fk_alloc_inv FOREIGN KEY (invoice_id) REFERENCES fee_invoices(id) ON DELETE CASCADE,
+  KEY idx_alloc_tenant_payment (tenant_id, payment_id),
+  KEY idx_alloc_tenant_invoice (tenant_id, invoice_id)
+);
+
+CREATE TABLE IF NOT EXISTS learner_credits (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL,
+  student_id BIGINT NOT NULL,
+  amount DECIMAL(18,2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'USD',
+  source VARCHAR(20) NOT NULL DEFAULT 'overpayment',
+  source_payment_id BIGINT NULL,
+  source_credit_note_id BIGINT NULL,
+  is_utilized BOOLEAN NOT NULL DEFAULT 0,
+  utilized_at TIMESTAMPTZ NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by BIGINT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() ,
+  updated_by BIGINT NULL,
+  is_deleted BOOLEAN NOT NULL DEFAULT 0,
+  KEY idx_credit_tenant_student (tenant_id, student_id, currency),
+  KEY idx_credit_tenant_student_utilized (tenant_id, student_id, is_utilized)
+);
+
+CREATE TABLE IF NOT EXISTS credit_notes (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL,
+  invoice_id BIGINT NOT NULL,
+  student_id BIGINT NOT NULL,
+  amount DECIMAL(18,2) NOT NULL,
+  currency CHAR(3) NOT NULL DEFAULT 'USD',
+  reason VARCHAR(255) NOT NULL,
+  approver_user_id BIGINT NOT NULL,
+  approved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  status VARCHAR(20) NOT NULL DEFAULT 'approved',
+  credit_note_number VARCHAR(50) NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by BIGINT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() ,
+  updated_by BIGINT NULL,
+  is_deleted BOOLEAN NOT NULL DEFAULT 0,
+  CONSTRAINT fk_cn_inv FOREIGN KEY (invoice_id) REFERENCES fee_invoices(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_cn_tenant_number (tenant_id, credit_note_number),
+  KEY idx_cn_tenant_student (tenant_id, student_id)
+);
+
+CREATE TABLE IF NOT EXISTS fee_invoice_batches (
+  id BIGSERIAL PRIMARY KEY,
+  tenant_id BIGINT NOT NULL,
+  batch_number VARCHAR(50) NOT NULL,
+  academic_year_id BIGINT NOT NULL,
+  term_id BIGINT NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  total_students INT NOT NULL DEFAULT 0,
+  processed INT NOT NULL DEFAULT 0,
+  created_count INT NOT NULL DEFAULT 0,
+  skipped_count INT NOT NULL DEFAULT 0,
+  failed_count INT NOT NULL DEFAULT 0,
+  result_json JSONB NULL,
+  started_at TIMESTAMPTZ NULL,
+  completed_at TIMESTAMPTZ NULL,
+  progress_percent INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by BIGINT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW() ,
+  updated_by BIGINT NULL,
+  is_deleted BOOLEAN NOT NULL DEFAULT 0,
+  CONSTRAINT fk_batch_tenant FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+  UNIQUE KEY uq_batch_tenant_number (tenant_id, batch_number),
+  KEY idx_batch_tenant_year_term (tenant_id, academic_year_id, term_id)
+);

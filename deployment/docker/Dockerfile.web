@@ -1,0 +1,54 @@
+# LearnCloud Web - React marketing + app frontend - Multi-stage, small, non-root
+# Stage 1: Build React with node:20-alpine
+FROM node:20-alpine AS build
+WORKDIR /app
+
+# Copy package files for cache
+COPY marketing-site/package.json marketing-site/package-lock.json* ./marketing-site/
+COPY src/LearnCloud.TeacherPortal/Frontend/package.json* ./src/LearnCloud.TeacherPortal/Frontend/ 2>/dev/null || true
+
+WORKDIR /app/marketing-site
+COPY marketing-site/ ./
+# If you have a build step, run it - for our static index.html we just copy, but for real React app:
+# RUN npm ci --only=production
+# RUN npm run build
+
+# For our current setup: marketing-site is static HTML with React CDN, but we simulate build
+RUN mkdir -p /app/build && cp -r /app/marketing-site/* /app/build/ || true
+# Also copy other frontend builds if exist
+# COPY --from=previous builds...
+
+# Stage 2: Runtime nginx:alpine non-root serving static
+FROM nginx:1.25-alpine AS runtime
+
+# Create non-root user for nginx (nginx already has nginx user, but run as non-root)
+RUN addgroup -S webgroup && adduser -S webuser -G webgroup
+
+# Remove default config
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Copy custom nginx config for web container (simple static serving)
+COPY deployment/nginx/web-nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copy built static files
+COPY --from=build /app/build /usr/share/nginx/html
+
+# Copy entrypoint script to handle permissions and run as non-root on unprivileged port
+COPY deployment/docker/web-entrypoint.sh /docker-entrypoint.d/99-web-entrypoint.sh
+RUN chmod +x /docker-entrypoint.d/99-web-entrypoint.sh
+
+# Ensure ownership
+RUN chown -R webuser:webgroup /usr/share/nginx/html /var/cache/nginx /var/run /var/log/nginx
+
+# Non-root - nginx needs to listen on 8080 not 80 for non-root
+RUN sed -i 's/listen       80;/listen       8080;/g' /etc/nginx/conf.d/default.conf
+RUN sed -i 's/listen  \[::\]:80;/listen  [::]:8080;/g' /etc/nginx/conf.d/default.conf || true
+
+USER webuser
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/ || exit 1
+
+# nginx already has entrypoint

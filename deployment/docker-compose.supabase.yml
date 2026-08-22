@@ -1,0 +1,214 @@
+# LearnCloud docker-compose for Supabase hosted Postgres (no local postgres service)
+# API points to Supabase pooled URI via ConnectionStrings__Default env var
+# For self-hosted Postgres, use docker-compose.yml (postgres:15-alpine)
+
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: learncloud-redis
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 20s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  api:
+    build:
+      context: ..
+      dockerfile: deployment/docker/Dockerfile.api
+    image: learncloud-api:${IMAGE_TAG:-latest}
+    container_name: learncloud-api
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      # Supabase pooled connection for API (PgBouncer, 6543) - recommended for serverless/API
+      # Example: postgres://postgres.[ref]:[pass]@aws-0-[region].pooler.supabase.com:6543/postgres?pgbouncer=true
+      # For direct connection (migrations), use: postgres://postgres:[pass]@db.[ref].supabase.co:5432/postgres
+      ConnectionStrings__Default: ${ConnectionStrings__Default:?must set Supabase pooled URI - see SUPABASE_DEPLOYMENT.md}
+      ConnectionStrings__Redis: "redis:6379"
+      Jwt__Secret: ${JWT_SECRET:?must set}
+      Jwt__Issuer: ${JWT_ISSUER:-LearnCloud}
+      Jwt__Audience: ${JWT_AUDIENCE:-LearnCloud}
+      Supabase__Url: ${SUPABASE_URL:-}
+      Supabase__Key: ${SUPABASE_KEY:-}
+      Supabase__ServiceRoleKey: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      Supabase__UseSupabaseStorage: ${SUPABASE_USE_STORAGE:-true}
+    env_file:
+      - ../.env.production
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+      - frontend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+        labels: "service=api"
+
+  web:
+    build:
+      context: ..
+      dockerfile: deployment/docker/Dockerfile.web
+    image: learncloud-web:${IMAGE_TAG:-latest}
+    container_name: learncloud-web
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    networks:
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: learncloud-nginx
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../deployment/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../deployment/nginx/conf.d:/etc/nginx/conf.d:ro
+      - certbot_certs:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    networks:
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  backup:
+    build:
+      context: ..
+      dockerfile: deployment/docker/Dockerfile.backup
+    image: learncloud-backup:${IMAGE_TAG:-latest}
+    container_name: learncloud-backup
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    environment:
+      # For Supabase, backup via pg_dump using direct connection, not via mysql
+      # Use Supabase direct connection for backup, not pooled
+      PGHOST: ${SUPABASE_DB_HOST:-db.[ref].supabase.co}
+      PGDATABASE: postgres
+      PGUSER: postgres
+      PGPASSWORD: ${SUPABASE_DB_PASSWORD:?must set for backup}
+      # Legacy MySQL vars kept for backward compat but not used
+      MYSQL_HOST: postgres
+      MYSQL_DATABASE: ${POSTGRES_DB:-learncloud}
+      MYSQL_USER: ${POSTGRES_USER:-learncloud}
+      MYSQL_PASSWORD: ${POSTGRES_PASSWORD:-}
+      BACKUP_ENCRYPTION_PASSPHRASE: ${BACKUP_ENCRYPTION_PASSPHRASE:?must set}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      AWS_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-af-south-1}
+      RCLONE_CONFIG: ${RCLONE_CONFIG:-}
+      TZ: Africa/Harare
+    volumes:
+      - backup_data:/backups
+      - ../deployment/scripts/backup.sh:/usr/local/bin/backup.sh:ro
+      - ../deployment/scripts/verify-backup.sh:/usr/local/bin/verify-backup.sh:ro
+    networks:
+      - backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  certbot:
+    image: certbot/certbot
+    container_name: learncloud-certbot
+    volumes:
+      - certbot_certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  redis_data:
+    driver: local
+  backup_data:
+    driver: local
+  certbot_certs:
+    driver: local
+  certbot_www:
+    driver: local
+  nginx_logs:
+    driver: local
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: false

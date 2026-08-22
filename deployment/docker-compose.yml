@@ -1,0 +1,264 @@
+# LearnCloud Production docker-compose - PostgreSQL version (Supabase compatible)
+# Migrated from MySQL 8.0 to PostgreSQL 15 for Supabase deployment
+# Services: postgres (or external Supabase), api, web, redis, nginx, backup
+# For Supabase: remove postgres service and set ConnectionStrings__Default to Supabase pooled URI
+
+version: "3.9"
+
+services:
+  # PostgreSQL - self-hosted alternative to Supabase
+  # For Supabase hosted, comment out this service and use external Supabase connection string
+  postgres:
+    image: postgres:15-alpine
+    container_name: learncloud-postgres
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1.5G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-learncloud}
+      POSTGRES_USER: ${POSTGRES_USER:-learncloud}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?must set - was MYSQL_PASSWORD, now POSTGRES_PASSWORD or use Supabase}
+      TZ: Africa/Harare
+      # For Supabase compatibility, also support POSTGRES_PASSWORD as fallback for MYSQL_PASSWORD
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - postgres_logs:/var/log/postgresql
+    ports:
+      - "127.0.0.1:5432:5432" # only localhost, not public
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-learncloud} -d ${POSTGRES_DB:-learncloud}"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    container_name: learncloud-redis
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 20s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  api:
+    build:
+      context: ..
+      dockerfile: deployment/docker/Dockerfile.api
+    image: learncloud-api:${IMAGE_TAG:-latest}
+    container_name: learncloud-api
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      # PostgreSQL connection - supports both self-hosted and Supabase
+      # For self-hosted: Host=postgres;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      # For Supabase pooled (recommended for API): postgres://postgres.[ref]:[pass]@aws-0-[region].pooler.supabase.com:6543/postgres?pgbouncer=true
+      # For Supabase direct (for migrations): postgres://postgres:[pass]@db.[ref].supabase.co:5432/postgres
+      ConnectionStrings__Default: ${ConnectionStrings__Default:-Host=postgres;Database=${POSTGRES_DB:-learncloud};Username=${POSTGRES_USER:-learncloud};Password=${POSTGRES_PASSWORD};Include Error Detail=true}
+      ConnectionStrings__Redis: "redis:6379"
+      Jwt__Secret: ${JWT_SECRET:?must set}
+      Jwt__Issuer: ${JWT_ISSUER:-LearnCloud}
+      Jwt__Audience: ${JWT_AUDIENCE:-LearnCloud}
+      # Supabase optional - if using Supabase Auth/Storage
+      Supabase__Url: ${SUPABASE_URL:-}
+      Supabase__Key: ${SUPABASE_KEY:-}
+      Supabase__ServiceRoleKey: ${SUPABASE_SERVICE_ROLE_KEY:-}
+    env_file:
+      - ../.env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+      - frontend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+        labels: "service=api"
+
+  web:
+    build:
+      context: ..
+      dockerfile: deployment/docker/Dockerfile.web
+    image: learncloud-web:${IMAGE_TAG:-latest}
+    container_name: learncloud-web
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    networks:
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: learncloud-nginx
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../deployment/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../deployment/nginx/conf.d:/etc/nginx/conf.d:ro
+      - certbot_certs:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    networks:
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+  backup:
+    build:
+      context: ..
+      dockerfile: deployment/docker/Dockerfile.backup
+    image: learncloud-backup:${IMAGE_TAG:-latest}
+    container_name: learncloud-backup
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    environment:
+      # PostgreSQL backup - supports both self-hosted and Supabase
+      PGHOST: ${POSTGRES_HOST:-postgres}
+      PGDATABASE: ${POSTGRES_DB:-learncloud}
+      PGUSER: ${POSTGRES_USER:-learncloud}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?must set}
+      # For Supabase, set PGHOST=db.[ref].supabase.co and PGUSER=postgres, PGPASSWORD=supabase password
+      # MySQL vars kept for backward compat but not used - will be removed
+      MYSQL_HOST: postgres
+      MYSQL_DATABASE: ${POSTGRES_DB:-learncloud}
+      MYSQL_USER: ${POSTGRES_USER:-learncloud}
+      MYSQL_PASSWORD: ${POSTGRES_PASSWORD:?must set}
+      BACKUP_ENCRYPTION_PASSPHRASE: ${BACKUP_ENCRYPTION_PASSPHRASE:?must set}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      AWS_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-af-south-1}
+      RCLONE_CONFIG: ${RCLONE_CONFIG:-}
+      TZ: Africa/Harare
+    volumes:
+      - backup_data:/backups
+      - ../deployment/scripts/backup.sh:/usr/local/bin/backup.sh:ro
+      - ../deployment/scripts/verify-backup.sh:/usr/local/bin/verify-backup.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  certbot:
+    image: certbot/certbot
+    container_name: learncloud-certbot
+    volumes:
+      - certbot_certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  backup_data:
+    driver: local
+  certbot_certs:
+    driver: local
+  certbot_www:
+    driver: local
+  nginx_logs:
+    driver: local
+  postgres_logs:
+    driver: local
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: false
