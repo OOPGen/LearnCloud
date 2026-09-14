@@ -41,7 +41,7 @@ public record TokenResponse(
 );
 
 public record RefreshRequest(
-    string RefreshToken,
+    string? RefreshToken, // null for web: the token comes from the HttpOnly cookie
     string? Device
 );
 

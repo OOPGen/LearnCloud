@@ -47,7 +47,9 @@ public class RefreshValidator : AbstractValidator<RefreshRequest>
 {
     public RefreshValidator()
     {
-        RuleFor(x => x.RefreshToken).NotEmpty().MinimumLength(20);
+        // Optional: web clients send an empty body and the token travels in the HttpOnly
+        // cookie. Mobile clients send it in the body.
+        RuleFor(x => x.RefreshToken).MinimumLength(20).When(x => !string.IsNullOrEmpty(x.RefreshToken));
     }
 }
 

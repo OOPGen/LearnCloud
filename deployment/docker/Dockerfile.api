@@ -1,4 +1,6 @@
-# LearnCloud API - Multi-stage, small, non-root
+# LearnCloud API - Multi-stage, small, non-root.
+# Used by Railway (see railway.json) and for local production-like runs:
+#   docker build -f deployment/docker/Dockerfile.api -t learncloud-api .
 # Stage 1: Build
 FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build
 WORKDIR /src
@@ -28,7 +30,7 @@ COPY src/LearnCloud.SetupWizard/*.csproj src/LearnCloud.SetupWizard/
 COPY src/LearnCloud.StudentPortal/*.csproj src/LearnCloud.StudentPortal/
 COPY src/LearnCloud.TeacherPortal/*.csproj src/LearnCloud.TeacherPortal/
 COPY src/LearnCloud.Transport/*.csproj src/LearnCloud.Transport/
-COPY src/LearnCloud.Web/*.csproj src/LearnCloud.Web/
+
 COPY *.sln ./
 # Central build settings and package versions must be present before restore.
 COPY Directory.Build.props Directory.Packages.props ./
@@ -45,8 +47,9 @@ WORKDIR /app
 # Create non-root user
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
-# Install curl for healthcheck
-RUN apk add --no-cache curl icu-libs
+# curl for the container healthcheck, icu-libs for culture data, tzdata so
+# TimeZoneInfo can resolve IANA zones such as Africa/Harare (Alpine ships none).
+RUN apk add --no-cache curl icu-libs tzdata
 
 # Copy published app
 COPY --from=build /app/publish .
@@ -55,9 +58,12 @@ COPY --from=build /app/publish .
 RUN chown -R appuser:appgroup /app
 
 # Environment - safe defaults, real secrets via env file outside repo
+# Port 8080 by default; on Railway the injected PORT variable takes precedence.
 ENV ASPNETCORE_URLS=http://+:8080
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
+# The production image always runs behind a proxy (Railway edge, Cloudflare).
+ENV ForwardedHeaders__Enabled=true
 
 # Non-root
 USER appuser

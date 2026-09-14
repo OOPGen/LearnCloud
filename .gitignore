@@ -22,6 +22,9 @@ project.assets.json
 node_modules/
 dist/
 .vite/
+# Cloudflare wrangler local state and local secrets
+.wrangler/
+.dev.vars
 *.tsbuildinfo
 npm-debug.log*
 yarn-error.log*

@@ -19,6 +19,4 @@
     <ProjectReference Include="..\LearnCloud.MultiTenancy\LearnCloud.MultiTenancy.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-  </ItemGroup>
 </Project>

@@ -20,9 +20,6 @@
   </ItemGroup>
 
   <ItemGroup>
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\LearnCloud.Fees\LearnCloud.Fees.csproj" />
   </ItemGroup>
 

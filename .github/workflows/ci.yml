@@ -1,79 +1,117 @@
-name: CI - LearnCloud Multi-Tenancy Isolation Tests
+# Continuous integration for LearnCloud.
+#
+# Deployments are not done from here: Railway (API) and Cloudflare Pages (web) deploy
+# from GitHub themselves. Turn on "Wait for CI" in the Railway service settings so the
+# API only deploys commits that pass this workflow. See docs/DEPLOYMENT.md.
 
+name: CI
+
+# Every push to any branch, so feature branches are checked before they reach main, and
+# Railway's "Wait for CI" sees a result for each main commit. Pull requests from
+# branches in this repository are covered by the push run on their branch.
 on:
   push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
+    branches: ["**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
-  multi-tenancy-tests:
+  api:
+    name: API build and tests
     runs-on: ubuntu-latest
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: learncloud_test
-        ports:
-          - 3306:3306
-        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
-
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: "8.0.x"
 
       - name: Restore
-        run: dotnet restore src/LearnCloud.MultiTenancy/LearnCloud.MultiTenancy.csproj || dotnet restore
+        run: dotnet restore LearnCloud.sln
 
       - name: Build
-        run: dotnet build --no-restore -c Release
+        run: dotnet build LearnCloud.sln --no-restore --configuration Release
 
-      - name: Run Migration (MySQL)
+      - name: Tenant isolation guards
+        run: bash scripts/ci_tenant_isolation_guards.sh
+
+      - name: Migrations match the model
         run: |
-          mysql -h 127.0.0.1 -P 3306 -u root -proot learncloud_test < src/LearnCloud.MultiTenancy/Migrations/V1_Auth_Migration.sql || true
-          mysql -h 127.0.0.1 -P 3306 -u root -proot learncloud_test < src/LearnCloud.Auth/Migrations/V1_Auth_Migration.sql || true
+          dotnet tool install --global dotnet-ef --version 8.0.11
+          dotnet ef migrations has-pending-model-changes \
+            --project src/LearnCloud.Api --startup-project src/LearnCloud.Api \
+            --no-build --configuration Release
 
-      - name: Run Multi-Tenancy Isolation Tests (Critical - freeze after acceptance)
-        env:
-          ConnectionStrings__Default: "Server=127.0.0.1;Port=3306;Database=learncloud_test;User=root;Password=root;CharSet=utf8mb4;"
-          Jwt__Secret: "ci-test-secret-key-must-be-32+chars-long-for-HS256!!CI"
-          Jwt__Issuer: "LearnCloud"
-          Jwt__Audience: "LearnCloud"
+      - name: No vulnerable packages
         run: |
-          dotnet test tests/MultiTenancyIsolationTests.csproj -c Release -v normal --filter "MultiTenancy" || dotnet test --filter MultiTenancy --logger "console;verbosity=detailed"
+          dotnet list LearnCloud.sln package --vulnerable --include-transitive | tee vulnerable.txt
+          if grep -Eq '^\s+>' vulnerable.txt; then
+            echo "::error::Packages with known vulnerabilities are referenced (see output above)."
+            exit 1
+          fi
 
-      - name: Run All Auth Tests
-        env:
-          ConnectionStrings__Default: "Server=127.0.0.1;Port=3306;Database=learncloud_test;User=root;Password=root;CharSet=utf8mb4;"
-        run: dotnet test --logger "trx"
+      - name: Unit tests
+        run: dotnet test tests/LearnCloud.UnitTests --no-build --configuration Release --logger trx --results-directory TestResults
 
-      - name: Security - Check TenantId leading indexes
-        run: |
-          echo "Checking that every tenant-owned table has tenant_id as first index column..."
-          mysql -h 127.0.0.1 -P 3306 -u root -proot learncloud_test -e "SELECT TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA='learncloud_test' AND COLUMN_NAME='TenantId' ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX;" | tee indexes.txt
-          # Fail if any tenant-owned table missing tenant_id leading index - manual check in PR
+      - name: Integration tests (PostgreSQL via Testcontainers)
+        run: dotnet test tests/LearnCloud.IntegrationTests --no-build --configuration Release --logger trx --results-directory TestResults
 
-      - name: Upload Test Results
-        uses: actions/upload-artifact@v4
+      - name: Upload test results
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: '**/TestResults/*.trx'
+          path: TestResults
+          if-no-files-found: ignore
 
-  lint-tenancy:
+  docker:
+    name: Production image builds
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Check forbidden patterns (no IgnoreQueryFilters without explicit no-tenant scope)
-        run: |
-          echo "Scanning for unsafe IgnoreQueryFilters usage..."
-          if grep -R "IgnoreQueryFilters" --include="*.cs" src/ | grep -v "INoTenantOperation" | grep -v "ExplicitNoTenant" | grep -v "test" | grep -v "Tests"; then
-            echo "::warning:: Found IgnoreQueryFilters outside explicit no-tenant scope - review required"
-          fi
-          echo "Scanning for missing tenant filter..."
-          # This is a placeholder for Roslyn analyzer that would enforce ITenantEntity always filtered
+      - name: Build the image Railway deploys
+        run: docker build --file deployment/docker/Dockerfile.api --tag learncloud-api:ci .
+
+  web:
+    name: Web build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: src/LearnCloud.Web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: src/LearnCloud.Web/package-lock.json
+
+      - run: npm ci
+      - run: npm run build
+      - name: Pages Function parses
+        run: node --check "functions/api/[[path]].js"
+
+  secrets:
+    name: Secret scan (full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks
+        run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.21.2 git /repo --no-banner --redact --exit-code 1

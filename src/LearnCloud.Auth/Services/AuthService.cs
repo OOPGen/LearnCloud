@@ -253,6 +253,7 @@ public class AuthService : IAuthService
 
     public async Task<TokenResponse> RefreshAsync(RefreshRequest req, string ip, CancellationToken ct = default)
     {
+        if (string.IsNullOrEmpty(req.RefreshToken)) throw new UnauthorizedAccessException("Missing refresh token");
         var hashed = _tokenService.HashToken(req.RefreshToken);
         var stored = await _db.Set<RefreshToken>().Include(rt=>rt.User).FirstOrDefaultAsync(rt=>rt.TokenHash==hashed, ct);
 

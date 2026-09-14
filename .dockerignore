@@ -1,0 +1,18 @@
+# Keep the Docker build context small and free of local build output. Without this,
+# host bin/ and obj/ folders were copied into the image build and could shadow the
+# restore done inside the container.
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+.git/
+.github/
+.vs/
+.vscode/
+docs/
+marketing-site/
+tests/
+src/LearnCloud.Web/
+**/*.md
+.env
+.env.*

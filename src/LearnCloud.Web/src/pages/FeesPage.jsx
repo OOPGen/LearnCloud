@@ -4,6 +4,7 @@ import { Button } from '../components/ui/Button';
 export default function FeesPage() {
   return (
     <AppShell
+      preview
       title="Fees & Invoicing"
       description="Money module V1 - All arithmetic in FeeCalculationService decimal(18,2)+currency, no float elsewhere. Tested with three real balances 95.00, 324.34, 30.00 credit to cent. Idempotent background job."
       breadcrumbs={[{ label: "Finance", path: "/finance" }, { label: "Fees" }]}

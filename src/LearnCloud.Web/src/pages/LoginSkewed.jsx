@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { forgotPassword, getTenantSlugFromHost, login, registerSchool } from '../lib/apiClient';
 import { Button } from '../components/ui/Button';
 import { Input, PasswordInput } from '../components/ui/Input';
 import { Dialog } from '../components/ui/Dialog';
@@ -59,7 +61,27 @@ function IconArrowRight(props) {
   );
 }
 
+const SLUG_PATTERN = /^[a-z0-9-]{3,50}$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const LEARNER_BANDS = ['150-300', '301-800', '801-2000', '2000+'];
+
+function slugify(text) {
+  return text.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50);
+}
+
+function passwordProblem(password) {
+  if (!password) return 'Password is required';
+  if (password.length < 8) return 'At least 8 characters';
+  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password))
+    return 'Use upper and lower case letters, a number and a symbol';
+  return null;
+}
+
 export default function LoginSkewed() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  // On petra.learncloud.co.zw the school comes from the address; elsewhere the user types it.
+  const hostSlug = getTenantSlugFromHost();
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
@@ -68,27 +90,34 @@ export default function LoginSkewed() {
   const [forgotSent, setForgotSent] = useState(false);
   const [toast, setToast] = useState(null);
 
-  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
-  const [registerForm, setRegisterForm] = useState({ school: '', name: '', email: '', password: '' });
+  const [loginForm, setLoginForm] = useState({ school: '', email: '', password: '' });
+  const [registerForm, setRegisterForm] = useState({ school: '', slug: '', slugEdited: false, name: '', email: '', phone: '', city: 'Bulawayo', band: '150-300', password: '' });
+
+  function showToast(type, message, ms = 5000) {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), ms);
+  }
 
   function validateLogin() {
     const e = {};
+    if (!hostSlug && !SLUG_PATTERN.test(loginForm.school.trim().toLowerCase())) e.loginSchool = "Enter your school's LearnCloud code, e.g. petra";
     if (!loginForm.email) e.email = "Email is required";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginForm.email)) e.email = "Enter a valid school email";
+    else if (!EMAIL_PATTERN.test(loginForm.email)) e.email = "Enter a valid school email";
     if (!loginForm.password) e.password = "Password is required";
-    else if (loginForm.password.length < 8) e.password = "Password must be at least 8 characters";
     setErrors(e);
     return Object.keys(e).length === 0;
   }
 
   function validateRegister() {
     const e = {};
-    if (!registerForm.school) e.school = "School name is required";
-    if (!registerForm.name) e.name = "Contact name is required";
-    if (!registerForm.email) e.email = "Email is required";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(registerForm.email)) e.email = "Enter a valid email";
-    if (!registerForm.password) e.password = "Password is required";
-    else if (registerForm.password.length < 8) e.password = "Minimum 8 characters, include number";
+    if (registerForm.school.trim().length < 3) e.school = "School name is required";
+    if (!SLUG_PATTERN.test(registerForm.slug)) e.slug = "3-50 lowercase letters, numbers or hyphens";
+    if (registerForm.name.trim().length < 3) e.name = "Contact name is required";
+    if (!EMAIL_PATTERN.test(registerForm.email)) e.email = "Enter a valid email";
+    if (!/^\+?[0-9\s-]{8,20}$/.test(registerForm.phone.trim())) e.phone = "Enter a phone number, e.g. +263 77 123 4567";
+    if (!registerForm.city.trim()) e.city = "City is required";
+    const pw = passwordProblem(registerForm.password);
+    if (pw) e.password = pw;
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -98,12 +127,14 @@ export default function LoginSkewed() {
     if (!validateLogin()) return;
     setLoading(true);
     setErrors({});
-    // Simulate API
-    await new Promise(r => setTimeout(r, 900));
-    setLoading(false);
-    setToast({ type: "success", message: `Welcome back! Signed in as ${loginForm.email}` });
-    // In real app: store token, navigate
-    setTimeout(() => setToast(null), 4000);
+    try {
+      await login(loginForm.email, loginForm.password, hostSlug || loginForm.school.trim().toLowerCase());
+      navigate(location.state?.from || '/subjects', { replace: true });
+    } catch (error) {
+      setErrors({ ...error.fieldErrors, loginForm: error.message || 'Sign in failed' });
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleRegister(e) {
@@ -111,22 +142,47 @@ export default function LoginSkewed() {
     if (!validateRegister()) return;
     setLoading(true);
     setErrors({});
-    await new Promise(r => setTimeout(r, 1100));
-    setLoading(false);
-    setToast({ type: "success", message: `Account created for ${registerForm.school}. Check email for verification. 14-day trial started.` });
-    setTimeout(() => setToast(null), 5000);
+    const email = registerForm.email.trim().toLowerCase();
+    try {
+      await registerSchool({
+        schoolName: registerForm.school.trim(),
+        slug: registerForm.slug,
+        city: registerForm.city.trim(),
+        contactEmail: email,
+        contactPhone: registerForm.phone.trim(),
+        learnerCountBand: registerForm.band,
+        adminFullName: registerForm.name.trim(),
+        adminEmail: email,
+        adminPhone: registerForm.phone.trim(),
+        password: registerForm.password,
+        confirmPassword: registerForm.password,
+      });
+      setLoginForm({ school: registerForm.slug, email, password: '' });
+      setIsLogin(true);
+      showToast("success", `${registerForm.school.trim()} is registered with a 14-day trial. Sign in to continue.`);
+    } catch (error) {
+      const fe = error.fieldErrors || {};
+      setErrors({ ...fe, school: fe.schoolName, email: fe.adminEmail || fe.contactEmail, phone: fe.contactPhone || fe.adminPhone, band: fe.learnerCountBand, registerForm: error.message });
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleForgot(e) {
     e.preventDefault();
-    if (!forgotEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail)) {
-      setErrors({ forgot: "Enter valid email" });
+    if (!EMAIL_PATTERN.test(forgotEmail)) {
+      setErrors({ forgot: "Enter a valid email" });
       return;
     }
     setLoading(true);
-    await new Promise(r => setTimeout(r, 800));
-    setLoading(false);
-    setForgotSent(true);
+    try {
+      await forgotPassword(forgotEmail, hostSlug || loginForm.school.trim().toLowerCase());
+      setForgotSent(true);
+    } catch (error) {
+      setErrors({ forgot: error.message });
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -165,6 +221,21 @@ export default function LoginSkewed() {
                 </div>
 
                 <form onSubmit={handleLogin} noValidate className="space-y-5">
+                  {errors.loginForm && <p role="alert" className="text-[13px] text-danger-600">{errors.loginForm}</p>}
+                  {!hostSlug && (
+                    <Input
+                      label="School code"
+                      id="login-school"
+                      placeholder="petra"
+                      autoComplete="organization"
+                      required
+                      leftIcon={<IconSchool width={18} height={18} />}
+                      value={loginForm.school}
+                      onChange={e => setLoginForm({ ...loginForm, school: e.target.value })}
+                      error={errors.loginSchool}
+                      helpText={!errors.loginSchool ? "The name in your school's LearnCloud address" : undefined}
+                    />
+                  )}
                   <Input
                     label="School email"
                     id="login-email"
@@ -214,7 +285,7 @@ export default function LoginSkewed() {
             </div>
 
             {/* Register Form - Right side */}
-            <div className="flex items-center justify-center p-8 md:p-10 bg-white order-2">
+            <div className="flex items-start md:items-center justify-center p-8 md:p-10 bg-white order-2 overflow-y-auto">
               <div className="w-full max-w-[320px]">
                 <div className="mb-6">
                   <h1 className="text-[28px] font-bold tracking-[-0.02em] text-neutral-900">Create school account</h1>
@@ -222,6 +293,7 @@ export default function LoginSkewed() {
                 </div>
 
                 <form onSubmit={handleRegister} noValidate className="space-y-4">
+                  {errors.registerForm && <p role="alert" className="text-[13px] text-danger-600">{errors.registerForm}</p>}
                   <Input
                     label="School name"
                     id="reg-school"
@@ -230,8 +302,18 @@ export default function LoginSkewed() {
                     required
                     leftIcon={<IconSchool width={18} height={18} />}
                     value={registerForm.school}
-                    onChange={e => setRegisterForm({ ...registerForm, school: e.target.value })}
+                    onChange={e => setRegisterForm({ ...registerForm, school: e.target.value, slug: registerForm.slugEdited ? registerForm.slug : slugify(e.target.value) })}
                     error={errors.school}
+                  />
+                  <Input
+                    label="School code"
+                    id="reg-slug"
+                    placeholder="petra-high"
+                    required
+                    value={registerForm.slug}
+                    onChange={e => setRegisterForm({ ...registerForm, slug: e.target.value.toLowerCase(), slugEdited: true })}
+                    error={errors.slug}
+                    helpText={!errors.slug ? "Staff sign in with this code" : undefined}
                   />
                   <Input
                     label="Contact name"
@@ -256,16 +338,44 @@ export default function LoginSkewed() {
                     onChange={e => setRegisterForm({ ...registerForm, email: e.target.value })}
                     error={errors.email}
                   />
+                  <Input
+                    label="Phone"
+                    id="reg-phone"
+                    type="tel"
+                    placeholder="+263 77 123 4567"
+                    autoComplete="tel"
+                    required
+                    value={registerForm.phone}
+                    onChange={e => setRegisterForm({ ...registerForm, phone: e.target.value })}
+                    error={errors.phone}
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      label="City"
+                      id="reg-city"
+                      required
+                      value={registerForm.city}
+                      onChange={e => setRegisterForm({ ...registerForm, city: e.target.value })}
+                      error={errors.city}
+                    />
+                    <div className="space-y-1.5">
+                      <label htmlFor="reg-band" className="block text-[13px] font-medium text-neutral-700">Learners</label>
+                      <select id="reg-band" value={registerForm.band} onChange={e => setRegisterForm({ ...registerForm, band: e.target.value })} className="w-full h-11 px-3 border border-neutral-200 rounded-xl text-[14px] bg-white">
+                        {LEARNER_BANDS.map(b => <option key={b} value={b}>{b}</option>)}
+                      </select>
+                      {errors.band && <p className="text-[12px] text-danger-600">{errors.band}</p>}
+                    </div>
+                  </div>
                   <PasswordInput
                     label="Password"
                     id="reg-password"
-                    placeholder="Min 8 chars, number included"
+                    placeholder="8+ chars, mixed case, number, symbol"
                     autoComplete="new-password"
                     required
                     value={registerForm.password}
                     onChange={e => setRegisterForm({ ...registerForm, password: e.target.value })}
                     error={errors.password}
-                    helpText={!errors.password ? "Must be 8+ characters" : undefined}
+                    helpText={!errors.password ? "Upper and lower case, a number and a symbol" : undefined}
                   />
 
                   <Button type="submit" size="lg" loading={loading} className="w-full mt-1">

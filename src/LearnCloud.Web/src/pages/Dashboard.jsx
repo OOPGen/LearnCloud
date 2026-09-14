@@ -4,6 +4,7 @@ import { Button } from '../components/ui/Button';
 export default function Dashboard() {
   return (
     <AppShell
+      preview
       title="Dashboard"
       description="Fees collected. Reports ready. Parents informed. Before lunch. Built in Bulawayo for schools 150-2,000 learners."
       breadcrumbs={[{ label: "Dashboard" }]}

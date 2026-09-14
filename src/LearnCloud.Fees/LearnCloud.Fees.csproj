@@ -19,8 +19,4 @@
     <ProjectReference Include="..\LearnCloud.MultiTenancy\LearnCloud.MultiTenancy.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="xunit" />
-  </ItemGroup>
-
 </Project>

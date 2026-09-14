@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { getSessionInfo, logout } from '../../lib/apiClient';
 
 // Icons - Lucide style consistent stroke 1.8
 const IconDashboard = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>;
@@ -31,13 +32,13 @@ const NAV_GROUPS = [
       { id: "grades", label: "Grades & Streams", icon: IconGraduation, path: "/grades" },
       { id: "subjects", label: "Subjects", icon: IconBook, path: "/subjects" },
       { id: "timetable", label: "Timetable", icon: IconClock, path: "/timetable" },
-      { id: "attendance", label: "Attendance", icon: IconCalendar, path: "/attendance", badge: "3" },
+      { id: "attendance", label: "Attendance", icon: IconCalendar, path: "/attendance" },
     ]
   },
   {
     label: "People",
     items: [
-      { id: "students", label: "Students", icon: IconUsers, path: "/students", count: "542" },
+      { id: "students", label: "Students", icon: IconUsers, path: "/students" },
       { id: "guardians", label: "Guardians", icon: IconUsers, path: "/guardians" },
       { id: "staff", label: "Staff", icon: IconUsers, path: "/staff" },
     ]
@@ -48,13 +49,13 @@ const NAV_GROUPS = [
       { id: "fees-structures", label: "Fee Structures", icon: IconMoney, path: "/fees/structures" },
       { id: "fees-invoices", label: "Invoices", icon: IconMoney, path: "/fees/invoices" },
       { id: "fees-payments", label: "Payments", icon: IconMoney, path: "/fees/payments" },
-      { id: "fees-arrears", label: "Arrears", icon: IconMoney, path: "/fees/arrears", badge: "$12.4k", badgeType: "warning" },
+      { id: "fees-arrears", label: "Arrears", icon: IconMoney, path: "/fees/arrears" },
     ]
   },
   {
     label: "Communication",
     items: [
-      { id: "messaging", label: "Messaging", icon: IconMessage, path: "/messaging", badge: "2" },
+      { id: "messaging", label: "Messaging", icon: IconMessage, path: "/messaging" },
       { id: "notices", label: "Notices", icon: IconMessage, path: "/notices" },
     ]
   },
@@ -147,12 +148,20 @@ function CommandPalette({ open, onClose }) {
   );
 }
 
-export default function AppShell({ children, title, description, actions, breadcrumbs }) {
+export default function AppShell({ children, title, description, actions, breadcrumbs, preview = false }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
-  const [tenantMenuOpen, setTenantMenuOpen] = useState(false);
+
   const location = useLocation();
+  const navigate = useNavigate();
+  const displayName = getSessionInfo()?.displayName || 'Signed in';
+  const initials = displayName.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || 'LC';
+
+  async function signOut() {
+    await logout();
+    navigate('/login', { replace: true });
+  }
 
   // Keyboard shortcut Cmd/Ctrl+K for command palette
   useEffect(() => {
@@ -184,7 +193,7 @@ export default function AppShell({ children, title, description, actions, breadc
             <>
               <div className="flex-1 min-w-0">
                 <div className="font-bold text-white tracking-tight text-[14px] leading-none">LearnCloud</div>
-                <div className="text-[11px] text-white/50 leading-none mt-0.5">Petra High • Bulawayo</div>
+                <div className="text-[11px] text-white/50 leading-none mt-0.5">School management</div>
               </div>
               <button
                 onClick={() => setSidebarCollapsed(true)}
@@ -250,17 +259,12 @@ export default function AppShell({ children, title, description, actions, breadc
         {/* Bottom User */}
         <div className="p-3 border-t border-white/10 shrink-0">
           <div className={`flex items-center gap-2 p-2 rounded-xl bg-white/5 border border-white/10 ${sidebarCollapsed ? 'justify-center' : ''}`}>
-            <div className="w-8 h-8 rounded-full bg-secondary-500 text-white grid place-items-center font-bold text-xs shrink-0">TN</div>
+            <div className="w-8 h-8 rounded-full bg-secondary-500 text-white grid place-items-center font-bold text-xs shrink-0" aria-hidden="true">{initials}</div>
             {!sidebarCollapsed && (
               <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-medium text-white truncate">T. Ndlovu</div>
-                <div className="text-[11px] text-white/50 truncate">Bursar • Petra High</div>
+                <div className="text-[13px] font-medium text-white truncate">{displayName}</div>
+                <button onClick={signOut} className="text-[11px] text-white/60 hover:text-white underline underline-offset-2">Sign out</button>
               </div>
-            )}
-            {!sidebarCollapsed && (
-              <button className="w-6 h-6 rounded grid place-items-center hover:bg-white/10 text-white/50">
-                <IconChevronDown className="w-4 h-4" />
-              </button>
             )}
           </div>
           {!sidebarCollapsed && (
@@ -281,7 +285,7 @@ export default function AppShell({ children, title, description, actions, breadc
               <div className="w-8 h-8 rounded-lg bg-white text-primary-900 grid place-items-center font-bold text-sm">LC</div>
               <div className="flex-1">
                 <div className="font-bold text-white text-[14px]">LearnCloud</div>
-                <div className="text-[11px] text-white/50">Petra High</div>
+                <div className="text-[11px] text-white/50">School management</div>
               </div>
               <button onClick={() => setMobileMenuOpen(false)} className="w-8 h-8 rounded grid place-items-center hover:bg-white/10">✕</button>
             </div>
@@ -364,42 +368,11 @@ export default function AppShell({ children, title, description, actions, breadc
             <IconSearch className="w-5 h-5 text-neutral-500" />
           </button>
 
-          {/* Tenant Switcher */}
-          <div className="relative">
-            <button
-              onClick={() => setTenantMenuOpen(!tenantMenuOpen)}
-              className="h-9 px-3 rounded-xl border border-neutral-200 bg-white hover:bg-neutral-50 flex items-center gap-2 text-[13px] font-medium transition"
-            >
-              <div className="w-5 h-5 rounded-full bg-primary-800 text-white grid place-items-center text-[10px] font-bold">P</div>
-              <span className="hidden sm:block">Petra High</span>
-              <IconChevronDown className={`w-4 h-4 text-neutral-400 transition ${tenantMenuOpen ? 'rotate-180' : ''}`} />
-            </button>
-            {tenantMenuOpen && (
-              <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-neutral-200 p-2 z-50 animate-slide-up">
-                <div className="p-2 text-[11px] font-semibold uppercase tracking-widest text-neutral-400">Switch School</div>
-                <button className="w-full flex items-center gap-2 p-2.5 rounded-xl bg-primary-50 text-primary-800 border border-primary-100">
-                  <div className="w-8 h-8 rounded-full bg-primary-800 text-white grid place-items-center font-bold text-xs">P</div>
-                  <div className="flex-1 text-left">
-                    <div className="text-[13px] font-medium">Petra High</div>
-                    <div className="text-[11px] text-neutral-500">petra.learncloud.co.zw • 542 learners</div>
-                  </div>
-                  <div className="w-2 h-2 rounded-full bg-success-500" />
-                </button>
-                <div className="mt-2 p-2 border-t border-neutral-100">
-                  <div className="text-[11px] text-neutral-500">Platform admin: Use tenant switcher in console</div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Notifications */}
-          <button className="relative w-9 h-9 rounded-xl grid place-items-center border border-neutral-200 bg-white hover:bg-neutral-50 transition">
-            <IconBell className="w-5 h-5 text-neutral-600" />
-            <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-danger-500 text-white text-[10px] font-bold grid place-items-center">3</span>
-          </button>
+          {/* The school switcher and notification count that sat here showed a fixed
+              sample school ("Petra High") and a made-up count to every tenant. */}
 
           {/* User Menu - Mobile */}
-          <div className="w-8 h-8 rounded-full bg-secondary-500 text-white grid place-items-center font-bold text-xs md:hidden">TN</div>
+          <button onClick={signOut} title="Sign out" aria-label={`Sign out ${displayName}`} className="w-8 h-8 rounded-full bg-secondary-500 text-white grid place-items-center font-bold text-xs md:hidden">{initials}</button>
         </header>
 
         {/* Page Header */}
@@ -418,6 +391,11 @@ export default function AppShell({ children, title, description, actions, breadc
         {/* Content */}
         <main className="flex-1 p-4 sm:p-6">
           <div className="max-w-7xl mx-auto">
+            {preview && (
+              <div role="note" className="mb-4 p-3 rounded-xl border border-warning-100 bg-warning-50 text-[13px] text-neutral-800">
+                <strong>Preview with sample data.</strong> This page is not connected to your school&apos;s records yet.
+              </div>
+            )}
             {children}
           </div>
         </main>
@@ -446,7 +424,7 @@ export default function AppShell({ children, title, description, actions, breadc
         {[
           { id: "dashboard", label: "Home", icon: IconDashboard, path: "/dashboard" },
           { id: "students", label: "Students", icon: IconUsers, path: "/students" },
-          { id: "fees", label: "Fees", icon: IconMoney, path: "/fees/invoices", badge: "$12.4k" },
+          { id: "fees", label: "Fees", icon: IconMoney, path: "/fees/invoices" },
           { id: "attendance", label: "Attend", icon: IconCalendar, path: "/attendance" },
           { id: "more", label: "More", icon: IconMenu, path: "/settings" },
         ].map(item => (

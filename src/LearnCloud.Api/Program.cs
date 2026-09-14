@@ -2,6 +2,8 @@ using Asp.Versioning;
 using FluentValidation;
 using LearnCloud.AI.Extensions;
 using LearnCloud.Api.BackgroundJobs;
+using LearnCloud.Api.Filters;
+using LearnCloud.Api.Hosting;
 using LearnCloud.Api.Middleware;
 using LearnCloud.AttendanceTimetable.Extensions;
 using LearnCloud.Auth.Extensions;
@@ -27,11 +29,40 @@ using LearnCloud.SetupWizard.Extensions;
 using LearnCloud.StudentPortal.Extensions;
 using LearnCloud.TeacherPortal.Extensions;
 using LearnCloud.Transport.Extensions;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Hosting platform conventions (Railway): PORT to bind, DATABASE_URL for PostgreSQL.
+builder.WebHost.BindPlatformPort();
+builder.Configuration.UseDatabaseUrlIfPresent();
+
+// Structured JSON logs outside development, so Railway log search can filter by field.
+if (!builder.Environment.IsDevelopment())
+{
+    builder.Logging.ClearProviders();
+    builder.Logging.AddJsonConsole(options => options.IncludeScopes = true);
+}
+
+// Behind Railway's edge (and the Cloudflare Pages proxy) the connection comes from a
+// proxy. Without this, every request appears to come from the proxy's address: rate
+// limits would be shared by all users and Request.IsHttps would be false.
+// ForwardLimit covers "client -> Cloudflare function -> Railway edge". Anyone who can
+// reach the API directly can still spoof X-Forwarded-For; see docs/DEPLOYMENT.md.
+var forwardedHeadersEnabled = builder.Configuration.GetValue("ForwardedHeaders:Enabled", false);
+if (forwardedHeadersEnabled)
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.ForwardLimit = builder.Configuration.GetValue("ForwardedHeaders:ForwardLimit", 2);
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+    });
+}
 
 // Fail at startup rather than on the first request: every registered service and every
 // controller (registered as services below) must have resolvable dependencies, and no
@@ -75,19 +106,19 @@ foreach (var moduleAssembly in LearnCloudModel.Assemblies)
 if (builder.Configuration.GetValue("Jobs:Enabled", true))
     builder.Services.AddHostedService<ScheduledJobsWorker>();
 
-// CORS - explicit origins, no wildcard
+// CORS - explicit origins from configuration (Cors:AllowedOrigins), no wildcard hosts
+// beyond the ones listed. The web app is served same-origin through the Cloudflare
+// Pages proxy and does not need CORS; this is for other browser clients.
+// Local Vite origins are the fallback only in Development; elsewhere no origin is allowed
+// unless configured.
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() is { Length: > 0 } configured
+    ? configured
+    : builder.Environment.IsDevelopment() ? new[] { "http://localhost:5173", "http://localhost:3000" } : Array.Empty<string>();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("tenant", policy =>
     {
-        policy.WithOrigins(
-                "https://learncloud.co.zw",
-                "https://www.learncloud.co.zw",
-                "https://*.learncloud.co.zw",
-                "https://*.learncloud.co.com",
-                "http://localhost:5173",
-                "http://localhost:3000"
-              )
+        policy.WithOrigins(allowedOrigins)
               .SetIsOriginAllowedToAllowWildcardSubdomains()
               .AllowAnyMethod()
               .AllowAnyHeader()
@@ -99,6 +130,7 @@ builder.Services.AddCors(options =>
 builder.Services.AddControllers(options =>
 {
     options.Filters.Add(new ProducesAttribute("application/json"));
+    options.Filters.Add<FluentValidationFilter>();
 })
 .AddControllersAsServices()
 .ConfigureApiBehaviorOptions(options =>
@@ -243,6 +275,12 @@ app.UseExceptionHandler(appBuilder =>
     });
 });
 
+if (forwardedHeadersEnabled)
+    app.UseForwardedHeaders();
+// After forwarded headers, before rate limiting: a request from the Cloudflare Pages proxy
+// carrying the shared secret gets its real client IP.
+app.UseMiddleware<TrustedProxyClientIpMiddleware>();
+
 app.UseSecurityHeaders();
 
 app.UseRouting();
@@ -270,11 +308,16 @@ app.MapControllers().RequireCors("tenant");
 // Liveness: the process is up. Readiness: the database answers.
 app.MapGet("/health", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow, environment = app.Environment.EnvironmentName }))
    .RequireCors("tenant");
-app.MapGet("/health/ready", async (LearnCloudDbContext db, CancellationToken ct) =>
-        await db.Database.CanConnectAsync(ct)
-            ? Results.Ok(new { status = "ready" })
-            : Results.Json(new { status = "database_unavailable" }, statusCode: 503))
-   .RequireCors("tenant");
+// Readiness is also served under /api so it can be checked through the Cloudflare Pages
+// proxy, which only forwards /api/* (everything else there is the web app).
+foreach (var readinessPath in new[] { "/health/ready", "/api/health" })
+{
+    app.MapGet(readinessPath, async (LearnCloudDbContext db, CancellationToken ct) =>
+            await db.Database.CanConnectAsync(ct)
+                ? Results.Ok(new { status = "ready" })
+                : Results.Json(new { status = "database_unavailable" }, statusCode: 503))
+       .RequireCors("tenant");
+}
 
 app.Run();
 

@@ -54,14 +54,29 @@ dotnet run --project src/LearnCloud.Api -- --migrate
 The old hand-written SQL scripts are archived in `docs/archive/sql-migrations-2026-08`
 and must not be run.
 
+## Web app
+
+```powershell
+cd src/LearnCloud.Web
+npm ci
+npm run dev
+```
+
+Open http://localhost:5173. Vite proxies `/api` to the API on http://localhost:5080, so run
+the API alongside it. On localhost the sign-in page asks for the school code; register a
+school first or use one created by the smoke test.
+
 ## Tests
 
 ```powershell
-dotnet test tests/LearnCloud.IntegrationTests
+dotnet test tests/LearnCloud.UnitTests          # fast, no Docker
+dotnet test tests/LearnCloud.IntegrationTests   # needs Docker
+node scripts/smoke-test.mjs http://localhost:5080 --full
 ```
 
-The integration tests start their own disposable PostgreSQL container, so Docker must
-be running. They do not touch the development database.
+The integration tests start their own disposable PostgreSQL container and do not touch the
+development database. The smoke test runs against a running API and registers two
+throwaway schools with `--full`.
 
 ## Configuration reference
 

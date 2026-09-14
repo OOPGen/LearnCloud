@@ -126,7 +126,6 @@ public class ExaminationCalculationService
         int rank = 0;
         int position = 0;
         decimal? previousScore = null;
-        int sameScoreCount = 0;
 
         for (int i = 0; i < sorted.Count; i++)
         {
@@ -145,18 +144,19 @@ public class ExaminationCalculationService
                 {
                     rank = rank + 1;
                 }
-                sameScoreCount = 1;
             }
-            else
-            {
-                // Tie - same rank as previous
-                sameScoreCount++;
-            }
+            // Otherwise a tie: the rank stays the same as the previous learner.
 
-            results.Add(new PositionResult(current.StudentId, currentScore, rank, sameScoreCount > 1));
+            results.Add(new PositionResult(current.StudentId, currentScore, rank, IsTie: false));
 
             previousScore = currentScore;
         }
+
+        // Every learner sharing a rank is tied, including the first of the group; the
+        // running count used to flag only the second and later members.
+        var tiedRanks = results.GroupBy(r => r.Rank).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
+        for (int i = 0; i < results.Count; i++)
+            if (tiedRanks.Contains(results[i].Rank)) results[i] = results[i] with { IsTie = true };
 
         // Add back excluded mid-year joiners with no position
         if (excludeMidYearJoiners && isMidYearJoiner != null)
