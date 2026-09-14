@@ -1,4 +1,5 @@
 using LearnCloud.Auth.Entities;
+using LearnCloud.MultiTenancy.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -22,15 +23,18 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         b.Property(x => x.Status).HasColumnType("VARCHAR(20)").HasDefaultValue("active");
         b.Property(x => x.FailedLoginCount).HasDefaultValue(0);
         b.Property(x => x.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
-        b.Property(x => x.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
+        b.Property(x => x.UpdatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP"); // AuditInterceptor stamps updates; ON UPDATE is MySQL-only
         b.Property(x => x.IsDeleted).HasDefaultValue(false);
 
-        b.HasIndex(x => new { x.TenantId, x.Email }).IsUnique().HasDatabaseName("uq_users_tenant_email");
+        // Nulls not distinct: platform users have no tenant, and PostgreSQL would otherwise
+        // allow two platform accounts with the same email.
+        b.HasIndex(x => new { x.TenantId, x.Email }).IsUnique().HasDatabaseName("uq_users_tenant_email")
+            .HasFilter(SoftDelete.ActiveRowsFilter).AreNullsDistinct(false);
         b.HasIndex(x => x.Email).HasDatabaseName("idx_users_email_global");
         b.HasIndex(x => new { x.TenantId, x.Status }).HasDatabaseName("idx_users_tenant_status");
         b.HasIndex(x => x.SecurityStamp).HasDatabaseName("idx_users_security_stamp");
 
-        b.HasOne(x => x.Tenant).WithMany(t => t.Users).HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
     }
 }
 
@@ -84,23 +88,4 @@ public class UserTokenConfiguration : IEntityTypeConfiguration<UserToken>
     }
 }
 
-public class TenantConfiguration : IEntityTypeConfiguration<Tenant>
-{
-    public void Configure(EntityTypeBuilder<Tenant> b)
-    {
-        b.ToTable("tenants");
-        b.HasKey(x => x.Id);
-        b.Property(x => x.Id).HasColumnType("BIGINT").ValueGeneratedOnAdd();
-        b.Property(x => x.Name).HasColumnType("VARCHAR(255)").IsRequired();
-        b.Property(x => x.Slug).HasColumnType("VARCHAR(100)").IsRequired();
-        b.Property(x => x.Status).HasColumnType("VARCHAR(20)").HasDefaultValue("trial");
-        b.Property(x => x.City).HasColumnType("VARCHAR(100)").HasDefaultValue("Bulawayo");
-        b.Property(x => x.Country).HasColumnType("CHAR(2)").HasDefaultValue("ZW");
-        b.Property(x => x.ContactEmail).HasColumnType("VARCHAR(255)").IsRequired();
-        b.Property(x => x.PrimaryColor).HasColumnType("CHAR(7)").HasDefaultValue("#0F153A");
-        b.Property(x => x.LearnerCountBand).HasColumnType("VARCHAR(20)").IsRequired();
-        b.HasIndex(x => x.Slug).IsUnique().HasDatabaseName("uq_tenants_slug");
-        b.Property(x => x.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP");
-        b.Property(x => x.IsDeleted).HasDefaultValue(false);
-    }
-}
+// Tenant is owned by LearnCloud.MultiTenancy; its configuration lives with it.

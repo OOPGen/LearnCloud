@@ -1,6 +1,8 @@
 using LearnCloud.Auth.Authorization;
 using LearnCloud.Auth.DTOs;
+using LearnCloud.Auth.Entities;
 using LearnCloud.Auth.Services;
+using LearnCloud.MultiTenancy.Context;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -27,15 +29,8 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> RegisterTenant([FromBody] RegisterTenantRequest req, CancellationToken ct)
     {
-        try
-        {
-            var result = await _auth.RegisterTenantAsync(req, GetIp(), ct);
-            return Ok(result);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { message = "An error occurred processing your request", requestId = HttpContext.TraceIdentifier, code = "BAD_REQUEST" }); // C7/C8 FIX: Was ex.Message exposing internal details
-        }
+        var result = await _auth.RegisterTenantAsync(req, GetIp(), ct);
+        return Ok(result);
     }
 
     // POST /api/auth/login - rate limited 5 per minute - SECURITY C2+C4 FIX
@@ -141,15 +136,8 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> VerifyEmail([FromBody] VerifyEmailRequest req, CancellationToken ct)
     {
-        try
-        {
-            var result = await _auth.VerifyEmailAsync(req, ct);
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(new { message = "An error occurred processing your request", requestId = HttpContext.TraceIdentifier, code = "BAD_REQUEST" }); // C7/C8 FIX: Was ex.Message exposing internal details
-        }
+        var result = await _auth.VerifyEmailAsync(req, ct);
+        return Ok(result);
     }
 
     [HttpPost("forgot-password")]
@@ -166,15 +154,8 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest req, CancellationToken ct)
     {
-        try
-        {
-            var result = await _auth.ResetPasswordAsync(req, GetIp(), ct);
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(new { message = "An error occurred processing your request", requestId = HttpContext.TraceIdentifier, code = "BAD_REQUEST" }); // C7/C8 FIX: Was ex.Message exposing internal details
-        }
+        var result = await _auth.ResetPasswordAsync(req, GetIp(), ct);
+        return Ok(result);
     }
 
     [HttpPost("change-password")]
@@ -192,10 +173,6 @@ public class AuthController : ControllerBase
         catch (UnauthorizedAccessException ex)
         {
             return Unauthorized(new { message = ex.Message });
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(new { message = "An error occurred processing your request", requestId = HttpContext.TraceIdentifier, code = "BAD_REQUEST" }); // C7/C8 FIX: Was ex.Message exposing internal details
         }
     }
 
@@ -257,8 +234,8 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> UnlockUser(long userId, CancellationToken ct)
     {
         var tenantId = User.GetTenantId();
-        var db = HttpContext.RequestServices.GetRequiredService<AuthDbContext>();
-        var target = await db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId && !u.IsDeleted, ct);
+        var db = HttpContext.RequestServices.GetRequiredService<LearnCloudDbContext>();
+        var target = await db.Set<User>().FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId && !u.IsDeleted, ct);
         if (target == null) return NotFound();
         target.FailedLoginCount = 0;
         target.LockoutEnd = null;

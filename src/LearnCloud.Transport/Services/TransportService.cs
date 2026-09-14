@@ -426,7 +426,7 @@ public class TransportService : ITransportService
         }
 
         // Add or update fee structure item for transport
-        var existingItem = await _db.Set<Fees.Entities.FeeStructureItem>().FirstOrDefaultAsync(fsi => fsi.TenantId == tenantId && fsi.FeeStructureId == existingStructure.Id && fsi.FeeItemId == feeItem.Id && !f.IsDeleted, ct);
+        var existingItem = await _db.Set<Fees.Entities.FeeStructureItem>().FirstOrDefaultAsync(fsi => fsi.TenantId == tenantId && fsi.FeeStructureId == existingStructure.Id && fsi.FeeItemId == feeItem.Id && !fsi.IsDeleted, ct);
         if (existingItem == null)
         {
             existingItem = new Fees.Entities.FeeStructureItem
@@ -612,8 +612,8 @@ public class TransportService : ITransportService
         var result = new List<UnassignedStudentDto>();
         foreach (var s in unassigned)
         {
-            var grade = await _db.Grades.FirstOrDefaultAsync(g => g.Id == s.GradeId, ct);
-            var stream = await _db.Streams.FirstOrDefaultAsync(st => st.Id == s.StreamId, ct);
+            var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == s.GradeId, ct);
+            var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(st => st.Id == s.StreamId, ct);
             result.Add(new UnassignedStudentDto(s.Id, $"{s.FirstName} {s.LastName}", s.StudentNumber, grade?.Name ?? "", stream?.Name ?? "", null));
         }
 
@@ -639,8 +639,8 @@ public class TransportService : ITransportService
             {
                 var student = await _db.Set<Student>().FirstOrDefaultAsync(s => s.Id == assignment.StudentId, ct);
                 if (student == null) continue;
-                var grade = await _db.Grades.FirstOrDefaultAsync(g => g.Id == student.GradeId, ct);
-                var stream = await _db.Streams.FirstOrDefaultAsync(s => s.Id == student.StreamId, ct);
+                var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == student.GradeId, ct);
+                var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == student.StreamId, ct);
 
                 // Guardian contact for manifest
                 var guardianLink = await _db.Set<GuardianStudentLink>().FirstOrDefaultAsync(l => l.TenantId == tenantId && l.StudentId == student.Id && l.IsPrimaryContact && !l.IsDeleted, ct);
@@ -740,8 +740,8 @@ public class TransportService : ITransportService
         var route = await _db.Set<Route>().FirstOrDefaultAsync(r => r.Id == a.RouteId, ct);
         var pickupStop = await _db.Set<RouteStop>().FirstOrDefaultAsync(s => s.Id == a.PickupStopId, ct);
         var dropStop = a.DropStopId.HasValue ? await _db.Set<RouteStop>().FirstOrDefaultAsync(s => s.Id == a.DropStopId.Value, ct) : null;
-        var grade = student != null ? await _db.Grades.FirstOrDefaultAsync(g => g.Id == student.GradeId, ct) : null;
-        var stream = student != null ? await _db.Streams.FirstOrDefaultAsync(s => s.Id == student.StreamId, ct) : null;
+        var grade = student != null ? await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == student.GradeId, ct) : null;
+        var stream = student != null ? await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == student.StreamId, ct) : null;
 
         return new TransportAssignmentDto(
             a.Id,
@@ -765,7 +765,8 @@ public class TransportService : ITransportService
             a.FeeApplied
         );
     }
+}
 
-    
-// REMOVED DUPLICATE STUBS - Now using canonical entities from LearnCloud.Domain.Entities
-// Fix C2: Deduplicate Student/Grade/Stream/Guardian - single source of truth
+// Student, Grade, ClassStream and Guardian are canonical entities in
+// LearnCloud.Domain.Entities. The duplicate stubs that used to sit here were
+// removed; the class-closing brace went with them and is restored above.

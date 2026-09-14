@@ -204,3 +204,13 @@ public class DisciplinaryRecord : TenantOwnedEntity
     public DateTime? ResolutionDate { get; set; }
     public string? ResolutionNotes { get; set; }
 }
+
+// Subjects a staff member is qualified and assigned to teach. Read by
+// TeacherPortal's authorization check when no timetable slot exists yet.
+// Referenced there but never declared before.
+public class StaffSubject : TenantOwnedEntity
+{
+    public long StaffId { get; set; }
+    public long SubjectId { get; set; }
+    public bool IsPrimary { get; set; } = false;
+}

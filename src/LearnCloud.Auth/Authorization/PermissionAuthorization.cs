@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using LearnCloud.Auth.Entities;
+using LearnCloud.MultiTenancy.Context;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
@@ -85,8 +87,8 @@ public class PermissionAuthorizationHandler : AuthorizationHandler<PermissionReq
         {
             // Still need to validate token version not revoked
             using var scope = _scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<Services.AuthDbContext>();
-            var dbUser = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId && !u.IsDeleted);
+            var db = scope.ServiceProvider.GetRequiredService<LearnCloudDbContext>();
+            var dbUser = await db.Set<User>().AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId && !u.IsDeleted);
             if (dbUser == null) return;
             if (tvClaim != null && int.TryParse(tvClaim, out var tv) && tv != dbUser.TokenVersion) { _logger.LogWarning("Token version mismatch user {UserId} jwt tv {JwtTv} db tv {DbTv}", userId, tv, dbUser.TokenVersion); return; }
             if (ssClaim != null && ssClaim != dbUser.SecurityStamp) return;
@@ -99,16 +101,16 @@ public class PermissionAuthorizationHandler : AuthorizationHandler<PermissionReq
         try
         {
             using var scope = _scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<Services.AuthDbContext>();
-            var dbUser = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId && !u.IsDeleted);
+            var db = scope.ServiceProvider.GetRequiredService<LearnCloudDbContext>();
+            var dbUser = await db.Set<User>().AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId && !u.IsDeleted);
             if (dbUser == null) return;
             if (tvClaim != null && int.TryParse(tvClaim, out var tv2) && tv2 != dbUser.TokenVersion) return;
             if (ssClaim != null && ssClaim != dbUser.SecurityStamp) return;
 
             // Load permissions via roles
-            var hasPermission = await db.UserRoles.Where(ur => ur.UserId == userId && !ur.IsDeleted)
-                .Join(db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.PermissionId)
-                .Join(db.Permissions, pid => pid, p => p.Id, (pid, p) => p.Code)
+            var hasPermission = await db.Set<UserRole>().Where(ur => ur.UserId == userId && !ur.IsDeleted)
+                .Join(db.Set<RolePermission>(), ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.PermissionId)
+                .Join(db.Set<Permission>(), pid => pid, p => p.Id, (pid, p) => p.Code)
                 .AnyAsync(p => p == requirement.Permission);
 
             if (hasPermission)

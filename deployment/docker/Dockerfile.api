@@ -3,16 +3,35 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0-alpine AS build
 WORKDIR /src
 # Copy csproj and restore as distinct layers for cache
-COPY src/LearnCloud.Auth/*.csproj src/LearnCloud.Auth/
-COPY src/LearnCloud.MultiTenancy/*.csproj src/LearnCloud.MultiTenancy/
-COPY src/LearnCloud.SetupWizard/*.csproj src/LearnCloud.SetupWizard/
-COPY src/LearnCloud.AttendanceTimetable/*.csproj src/LearnCloud.AttendanceTimetable/
-COPY src/LearnCloud.TeacherPortal/*.csproj src/LearnCloud.TeacherPortal/
-COPY src/LearnCloud.Fees/*.csproj src/LearnCloud.Fees/
-COPY src/LearnCloud.PlatformBilling/*.csproj src/LearnCloud.PlatformBilling/
-COPY src/LearnCloud.Messaging/*.csproj src/LearnCloud.Messaging/
+COPY src/LearnCloud.AI/*.csproj src/LearnCloud.AI/
+COPY src/LearnCloud.Analytics/*.csproj src/LearnCloud.Analytics/
 COPY src/LearnCloud.Api/*.csproj src/LearnCloud.Api/
+COPY src/LearnCloud.AttendanceTimetable/*.csproj src/LearnCloud.AttendanceTimetable/
+COPY src/LearnCloud.Auth/*.csproj src/LearnCloud.Auth/
+COPY src/LearnCloud.Communication/*.csproj src/LearnCloud.Communication/
+COPY src/LearnCloud.Core/*.csproj src/LearnCloud.Core/
+COPY src/LearnCloud.Domain/*.csproj src/LearnCloud.Domain/
+COPY src/LearnCloud.Examinations/*.csproj src/LearnCloud.Examinations/
+COPY src/LearnCloud.Fees/*.csproj src/LearnCloud.Fees/
+COPY src/LearnCloud.Finance/*.csproj src/LearnCloud.Finance/
+COPY src/LearnCloud.HR/*.csproj src/LearnCloud.HR/
+COPY src/LearnCloud.Hostel/*.csproj src/LearnCloud.Hostel/
+COPY src/LearnCloud.Library/*.csproj src/LearnCloud.Library/
+COPY src/LearnCloud.Messaging/*.csproj src/LearnCloud.Messaging/
+COPY src/LearnCloud.Mobile/*.csproj src/LearnCloud.Mobile/
+COPY src/LearnCloud.MultiTenancy/*.csproj src/LearnCloud.MultiTenancy/
+COPY src/LearnCloud.OnlinePayments/*.csproj src/LearnCloud.OnlinePayments/
+COPY src/LearnCloud.ParentPortal/*.csproj src/LearnCloud.ParentPortal/
+COPY src/LearnCloud.PlatformAdmin/*.csproj src/LearnCloud.PlatformAdmin/
+COPY src/LearnCloud.PlatformBilling/*.csproj src/LearnCloud.PlatformBilling/
+COPY src/LearnCloud.SetupWizard/*.csproj src/LearnCloud.SetupWizard/
+COPY src/LearnCloud.StudentPortal/*.csproj src/LearnCloud.StudentPortal/
+COPY src/LearnCloud.TeacherPortal/*.csproj src/LearnCloud.TeacherPortal/
+COPY src/LearnCloud.Transport/*.csproj src/LearnCloud.Transport/
+COPY src/LearnCloud.Web/*.csproj src/LearnCloud.Web/
 COPY *.sln ./
+# Central build settings and package versions must be present before restore.
+COPY Directory.Build.props Directory.Packages.props ./
 RUN dotnet restore src/LearnCloud.Api/LearnCloud.Api.csproj
 
 # Copy everything and build

@@ -20,7 +20,6 @@ public class NoTenantOperation : INoTenantOperation
     private readonly LearnCloudDbContext _db;
     private readonly ILogger<NoTenantOperation> _logger;
 
-    private static readonly HashSet<string> AllowedRoles = new() { "PLATFORM_SUPERADMIN", "SYSTEM_JOB", "MIGRATION" };
 
     public NoTenantOperation(ITenantContext tenantContext, LearnCloudDbContext db, ILogger<NoTenantOperation> logger)
     {
@@ -75,10 +74,10 @@ public class NoTenantOperation : INoTenantOperation
 
     private void ValidateRole(string role)
     {
-        if (!AllowedRoles.Contains(role))
+        if (!PrivilegedRoles.CanUseNoTenantScope(role))
         {
             _logger.LogCritical("Unauthorized attempt to begin no-tenant scope with role {Role}", role);
-            throw new UnauthorizedAccessException($"Role {role} not allowed for explicit no-tenant operations. Allowed: {string.Join(',', AllowedRoles)}");
+            throw new UnauthorizedAccessException($"Role {role} not allowed for explicit no-tenant operations. Allowed: {string.Join(',', PrivilegedRoles.All)}");
         }
     }
 }

@@ -1,3 +1,4 @@
+using LearnCloud.Fees.DTOs;
 using LearnCloud.Fees.Entities;
 using LearnCloud.Fees.Services;
 using LearnCloud.MultiTenancy.Context;
@@ -211,7 +212,7 @@ public class FeesController : ControllerBase
         Response.Headers["X-Total-Count"] = total.ToString();
         Response.Headers["X-Page"] = page.ToString();
         Response.Headers["X-Page-Size"] = pageSize.ToString();
-        Response.Headers["Link"] = $"<{Request.Path}?page={page+1}&pageSize={pageSize}>; rel=\"next\""";
+        Response.Headers["Link"] = $"<{Request.Path}?page={page+1}&pageSize={pageSize}>; rel=\"next\"";
         
         return Ok(list);
     }

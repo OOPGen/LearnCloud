@@ -16,10 +16,10 @@ public class Tenant : BaseEntity
     [MaxLength(20)] public string LearnerCountBand { get; set; } = "150-300";
     public string? LogoUrl { get; set; }
 
-    // Navigation
+    // Navigation. Subscriptions are owned by LearnCloud.PlatformBilling and point
+    // here by TenantId; MultiTenancy cannot reference that module.
     public ICollection<TenantDomain> Domains { get; set; } = new List<TenantDomain>();
     public TenantSettings? Settings { get; set; }
-    public ICollection<Subscription> Subscriptions { get; set; } = new List<Subscription>();
 }
 
 // TenantDomain - custom domain mapping e.g. portal.hillcrest.ac.zw
@@ -32,34 +32,8 @@ public class TenantDomain : TenantOwnedEntity
     public bool IsCustom { get; set; } = false; // true if not *.learncloud.co.zw
 }
 
-// Plan - SaaS pricing tier
-public class Plan : BaseEntity
-{
-    // Plan is platform-owned, NOT ITenantEntity (no tenant_id)
-    [MaxLength(50)] public string Code { get; set; } = null!; // starter, growth, scale
-    [MaxLength(100)] public string Name { get; set; } = null!;
-    public int MaxLearners { get; set; }
-    public decimal PriceMonthly { get; set; } // DECIMAL(18,2)
-    public decimal PriceAnnual { get; set; }
-    [MaxLength(3)] public string Currency { get; set; } = "USD";
-    public string? FeaturesJson { get; set; }
-    public bool IsActive { get; set; } = true;
-}
-
-// Subscription - tenant's current plan
-public class Subscription : TenantOwnedEntity
-{
-    public long PlanId { get; set; }
-    public Plan Plan { get; set; } = null!;
-    [MaxLength(20)] public string BillingCycle { get; set; } = "monthly"; // monthly, annual
-    [MaxLength(20)] public string Status { get; set; } = "trialing"; // trialing, active, past_due, cancelled, suspended
-    public DateTime? TrialEndsAt { get; set; }
-    public DateTime CurrentPeriodStart { get; set; }
-    public DateTime CurrentPeriodEnd { get; set; }
-    public int MeteredActiveStudents { get; set; } = 0;
-    public bool OverLimitFlag { get; set; } = false;
-    [MaxLength(3)] public string Currency { get; set; } = "USD";
-}
+// Plan and Subscription are owned by LearnCloud.PlatformBilling. The simpler copies
+// that used to sit here duplicated them and were removed.
 
 // TenantSettings - per-tenant config, 1-1 with Tenant
 public class TenantSettings : TenantOwnedEntity

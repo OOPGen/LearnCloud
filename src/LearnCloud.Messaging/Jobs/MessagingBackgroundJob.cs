@@ -1,3 +1,4 @@
+using LearnCloud.MultiTenancy.Security;
 using LearnCloud.Messaging.Entities;
 using LearnCloud.Messaging.Services.Providers;
 using LearnCloud.MultiTenancy.Context;
@@ -31,10 +32,10 @@ public class MessagingBackgroundJob
     {
         // SECURITY: Use explicit no-tenant scope to fetch batch's tenantId (platform operation)
         MessageBatch? batchUnfiltered = null;
-        await _noTenantOp.ExecuteAsync($"Background job fetching batch {batchId} for tenant isolation", async () =>
+        await _noTenantOp.ExecuteAsync($"Background job fetching batch {batchId} for tenant isolation", actorUserId: 0, actorRole: PrivilegedRoles.SystemJob, async () =>
         {
             batchUnfiltered = await _db.Set<MessageBatch>().FirstOrDefaultAsync(b => b.Id == batchId && !b.IsDeleted, ct);
-        }, ct);
+        });
 
         if (batchUnfiltered == null) throw new InvalidOperationException($"Batch {batchId} not found");
         
@@ -56,7 +57,6 @@ public class MessagingBackgroundJob
 
         var logs = await _db.Set<MessageDeliveryLog>().Where(l => l.BatchId == batchId && l.TenantId == batch.TenantId && !l.IsDeleted && l.Status == MessageStatus.Queued).OrderBy(l => l.Id).ToListAsync(ct);
 
-        var logs = await _db.Set<MessageDeliveryLog>().Where(l => l.BatchId == batchId && l.TenantId == batch.TenantId && !l.IsDeleted && l.Status == MessageStatus.Queued).OrderBy(l => l.Id).ToListAsync(ct);
 
         // Batching: e.g., 50 messages per batch iteration
         const int batchSize = 50;

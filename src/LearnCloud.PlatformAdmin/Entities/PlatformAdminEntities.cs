@@ -33,7 +33,7 @@ public class ImpersonationGrant : BaseEntity
     public DateTime? RevokedAt { get; set; }
     public long? RevokedByUserId { get; set; }
 
-    public bool IsActive => HasConsent && !IsDeleted && ExpiredAt > DateTime.UtcNow && RevokedAt == null;
+    public bool IsActive => HasConsent && !IsDeleted && ExpiresAt > DateTime.UtcNow && RevokedAt == null;
 
     public string? TokenHash { get; set; } // hash of grant token for verification, raw token sent to platform admin via secure channel? Actually grant is approval, platform admin then starts session using grant id
 }

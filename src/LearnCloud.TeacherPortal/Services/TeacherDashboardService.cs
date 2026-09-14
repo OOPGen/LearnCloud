@@ -1,3 +1,5 @@
+using LearnCloud.TeacherPortal.Entities;
+using LearnCloud.HR.Entities;
 using LearnCloud.AttendanceTimetable.Entities;
 using LearnCloud.MultiTenancy.Context;
 using LearnCloud.Domain.Entities;
@@ -40,8 +42,8 @@ public class TeacherDashboardService : ITeacherDashboardService
         var todayTimetable = new List<TodayTimetableItemDto>();
         foreach (var slot in todaySlots)
         {
-            var grade = await _db.Grades.FirstOrDefaultAsync(g => g.Id == slot.GradeId, ct);
-            var stream = await _db.Streams.FirstOrDefaultAsync(s => s.Id == slot.StreamId, ct);
+            var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == slot.GradeId, ct);
+            var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == slot.StreamId, ct);
             var subject = await _db.Set<Subject>().FirstOrDefaultAsync(su => su.Id == slot.SubjectId, ct);
             var period = await _db.Set<PeriodDefinition>().FirstOrDefaultAsync(p => p.TenantId == tenantId && p.PeriodNumber == slot.PeriodNumber, ct);
             var room = slot.RoomId.HasValue ? await _db.Set<Room>().FirstOrDefaultAsync(r => r.Id == slot.RoomId.Value, ct) : null;
@@ -70,8 +72,8 @@ public class TeacherDashboardService : ITeacherDashboardService
 
         foreach (var (gradeId, streamId) in assignedClasses)
         {
-            var grade = await _db.Grades.FirstOrDefaultAsync(g => g.Id == gradeId, ct);
-            var stream = await _db.Streams.FirstOrDefaultAsync(s => s.Id == streamId, ct);
+            var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == gradeId, ct);
+            var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == streamId, ct);
             // Check daily attendance setting - if per_period, need per period todo
             var settings = await _db.Set<TenantAttendanceSettings>().FirstOrDefaultAsync(s => s.TenantId == tenantId, ct);
             var mode = settings?.Mode ?? AttendanceMode.Daily;
@@ -113,8 +115,8 @@ public class TeacherDashboardService : ITeacherDashboardService
         var marksDeadlines = new List<MarksDeadlineDto>();
         foreach (var assessment in assessments.Take(10))
         {
-            var grade = await _db.Grades.FirstOrDefaultAsync(g => g.Id == assessment.GradeId, ct);
-            var stream = await _db.Streams.FirstOrDefaultAsync(s => s.Id == assessment.StreamId, ct);
+            var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == assessment.GradeId, ct);
+            var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == assessment.StreamId, ct);
             var subject = await _db.Set<Subject>().FirstOrDefaultAsync(s => s.Id == assessment.SubjectId, ct);
             // Count marks
             var totalStudents = await _db.Set<Student>().CountAsync(s => s.TenantId == tenantId && s.GradeId == assessment.GradeId && s.StreamId == assessment.StreamId && !s.IsDeleted, ct);
@@ -151,7 +153,7 @@ public class TeacherDashboardService : ITeacherDashboardService
             .Select(n => new NoticeDto(n.Id, n.Title, n.Body, n.Priority, n.IsRead, n.CreatedAt))
             .ToListAsync(ct);
 
-        var teacher = await _db.Set<StaffProfile>().FirstOrDefaultAsync(s => s.Id == teacherStaffId, ct);
+        var teacher = await _db.Set<Staff>().FirstOrDefaultAsync(s => s.Id == teacherStaffId, ct);
         var totalClasses = assignedClasses.Count;
         var totalLearners = await _db.Set<Student>().Where(s => s.TenantId == tenantId && assignedClasses.Any(c => c.gradeId == s.GradeId && c.streamId == s.StreamId) && !s.IsDeleted).CountAsync(ct);
 
@@ -165,8 +167,8 @@ public class TeacherDashboardService : ITeacherDashboardService
 
         foreach (var (gradeId, streamId) in assigned)
         {
-            var grade = await _db.Grades.FirstOrDefaultAsync(g => g.Id == gradeId && g.TenantId == tenantId, ct);
-            var stream = await _db.Streams.FirstOrDefaultAsync(s => s.Id == streamId && s.TenantId == tenantId, ct);
+            var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == gradeId && g.TenantId == tenantId, ct);
+            var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == streamId && s.TenantId == tenantId, ct);
             if (grade == null || stream == null) continue;
 
             var isClassTeacher = stream.ClassTeacherStaffId == teacherStaffId;

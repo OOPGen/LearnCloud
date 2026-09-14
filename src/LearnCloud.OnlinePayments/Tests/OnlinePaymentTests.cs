@@ -153,10 +153,10 @@ public class OnlinePaymentTests
             db.Set<PaymentGatewaySettings>().Add(gatewaySettings);
 
             var grade = new Grade { TenantId=tenantId, Name="Grade 5", Code="G5", AcademicYearId=2026 };
-            db.Grades.Add(grade);
+            db.Set<Grade>().Add(grade);
             await db.SaveChangesAsync();
-            var stream = new Stream { TenantId=tenantId, GradeId=grade.Id, Name="Blue", Capacity=40, AcademicYearId=2026 };
-            db.Streams.Add(stream);
+            var stream = new ClassStream { TenantId=tenantId, GradeId=grade.Id, Name="Blue", Capacity=40, AcademicYearId=2026 };
+            db.Set<ClassStream>().Add(stream);
             await db.SaveChangesAsync();
 
             var student = new Student { TenantId=tenantId, StudentNumber="2026-001", FirstName="Thabo", LastName="N", GradeId=grade.Id, StreamId=stream.Id, AcademicYearId=2026 };
@@ -280,10 +280,5 @@ public class OnlinePaymentTests
         public Task<IPaymentGateway> GetGatewayByNameAsync(long tenantId, string gatewayName, CancellationToken ct = default) => Task.FromResult(_gateway);
     }
 
-    // Stub entities
-    public class Student : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public string StudentNumber { get; set; } = ""; public string FirstName { get; set; } = ""; public string LastName { get; set; } public long GradeId { get; set; } public long StreamId { get; set; } public long AcademicYearId { get; set; } }
-    public class Guardian : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public string FirstName { get; set; } = ""; public string LastName { get; set; } = ""; public string Phone { get; set; } = ""; }
-    public class GuardianStudentLink : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public long GuardianId { get; set; } public long StudentId { get; set; } public bool IsPrimaryContact { get; set; } }
-    public class Grade : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public string Name { get; set; } = ""; public string Code { get; set; } = ""; public long AcademicYearId { get; set; } }
-    public class Stream : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public long GradeId { get; set; } public string Name { get; set; } = ""; public int Capacity { get; set; } }
+    // Test data uses the canonical entities from LearnCloud.Domain.Entities.
 }

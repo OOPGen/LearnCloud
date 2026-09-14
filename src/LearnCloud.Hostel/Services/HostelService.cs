@@ -1,3 +1,4 @@
+using LearnCloud.Fees.Entities;
 using LearnCloud.Hostel.DTOs;
 using LearnCloud.Hostel.Entities;
 using LearnCloud.MultiTenancy.Context;
@@ -228,7 +229,7 @@ public class HostelService : IHostelService
         var feeAmount = 500m; // would get from block or route? For hostel, use block fee or default 500
         // Check block fee amount? For demo use 500
 
-        var existingItem = await _db.Set<FeeStructureItem>().FirstOrDefaultAsync(fsi => fsi.TenantId == tenantId && fsi.FeeStructureId == feeStructure.Id && fsi.FeeItemId == feeItem.Id && !f.IsDeleted, ct);
+        var existingItem = await _db.Set<FeeStructureItem>().FirstOrDefaultAsync(fsi => fsi.TenantId == tenantId && fsi.FeeStructureId == feeStructure.Id && fsi.FeeItemId == feeItem.Id && !fsi.IsDeleted, ct);
         if (existingItem == null)
         {
             existingItem = new FeeStructureItem { TenantId = tenantId, FeeStructureId = feeStructure.Id, FeeItemId = feeItem.Id, Description = $"Boarding - {block?.Name}", Amount = feeAmount, Currency = "USD", Quantity = 1, LineTotal = feeAmount, CreatedBy = userId };

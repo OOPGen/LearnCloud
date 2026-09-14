@@ -63,10 +63,6 @@ public class SetupWizardController : ControllerBase
         {
             return BadRequest(new { message = "Validation failed", errors = ex.Errors });
         }
-        catch (Exception ex)
-        {
-            return BadRequest(new { message = "An error occurred processing your request", requestId = HttpContext.TraceIdentifier, code = "BAD_REQUEST" }); // C7/C8 FIX: Was ex.Message exposing internal details
-        }
     }
 
     // POST /api/setup/skip/4 - skip except 1 and 3
@@ -76,15 +72,8 @@ public class SetupWizardController : ControllerBase
     [HttpPost("skip/{step:int}")]
     public async Task<IActionResult> SkipStep(int step, CancellationToken ct)
     {
-        try
-        {
-            var result = await _wizard.SkipStepAsync(TenantId, UserId, step, ct);
-            return Ok(result);
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(new { message = "An error occurred processing your request", requestId = HttpContext.TraceIdentifier, code = "BAD_REQUEST" }); // C7/C8 FIX: Was ex.Message exposing internal details
-        }
+        var result = await _wizard.SkipStepAsync(TenantId, UserId, step, ct);
+        return Ok(result);
     }
 
     // GET /api/setup/summary - completion summary counts
@@ -105,15 +94,8 @@ public class SetupWizardController : ControllerBase
     [HttpPost("complete")]
     public async Task<IActionResult> Complete(CancellationToken ct)
     {
-        try
-        {
-            var summary = await _wizard.CompleteAsync(TenantId, UserId, ct);
-            return Ok(summary);
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(new { message = "An error occurred processing your request", requestId = HttpContext.TraceIdentifier, code = "BAD_REQUEST" }); // C7/C8 FIX: Was ex.Message exposing internal details
-        }
+        var summary = await _wizard.CompleteAsync(TenantId, UserId, ct);
+        return Ok(summary);
     }
 
     // POST /api/setup/branding/logo - logo upload - SECURITY C3 FIX: No SVG, magic byte validation

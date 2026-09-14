@@ -1,3 +1,4 @@
+using LearnCloud.Fees.Entities;
 using LearnCloud.MultiTenancy.Context;
 using LearnCloud.Domain.Entities;
 using LearnCloud.OnlinePayments.Entities;

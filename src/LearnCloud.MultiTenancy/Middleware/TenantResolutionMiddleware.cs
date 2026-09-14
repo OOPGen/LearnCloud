@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using LearnCloud.MultiTenancy.Context;
 using LearnCloud.MultiTenancy.Entities;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -31,18 +32,24 @@ public class TenantResolutionMiddleware
         // Extract slug: first part of host, or X-Tenant-Slug header for local dev
         var slug = ExtractSlug(host, httpContext.Request.Headers);
 
-        if (!string.IsNullOrEmpty(slug) && !IsPlatformHost(host))
+        // An explicit X-Tenant-Slug header is honoured on any host. It used to be ignored on
+        // localhost, so the documented local-dev override did nothing and the subdomain/token
+        // mismatch check could not be exercised locally. The header can only narrow access:
+        // for authenticated users a mismatch is rejected below.
+        var slugFromHeader = httpContext.Request.Headers.ContainsKey("X-Tenant-Slug");
+        if (!string.IsNullOrEmpty(slug) && (slugFromHeader || !IsPlatformHost(host)))
         {
             // Lookup tenant by slug or by TenantDomain
             subdomainTenant = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Slug == slug && !t.IsDeleted);
             if (subdomainTenant == null)
             {
                 // Try custom domain lookup
-                var domainEntity = await db.TenantDomains.Include(d=>d.TenantId).AsNoTracking()
+                // Custom domains resolve through TenantDomain, verified domains only. The
+                // lookup it replaced called Include() on a scalar column and threw.
+                // TenantDomain is tenant-owned, so the filter is bypassed explicitly here:
+                // no tenant is known yet, that is the point of the lookup.
+                var tenantDomain = await db.TenantDomains.IgnoreQueryFilters().AsNoTracking()
                     .FirstOrDefaultAsync(d => d.Domain == host && !d.IsDeleted && d.IsVerified);
-                // Simplified: if domain found, get tenant via navigation? We store tenant via TenantId
-                // For demo, we try lookup tenant via domain table directly
-                var tenantDomain = await db.TenantDomains.AsNoTracking().FirstOrDefaultAsync(d => d.Domain == host && !d.IsDeleted);
                 if (tenantDomain != null)
                 {
                     subdomainTenant = await db.Tenants.AsNoTracking().FirstOrDefaultAsync(t => t.Id == tenantDomain.TenantId && !t.IsDeleted);
@@ -135,6 +142,7 @@ public class TenantResolutionMiddleware
             }
             else if (isPlatformRole)
             {
+                tenantContext.SetActor(actorUserId, "PLATFORM_SUPERADMIN");
                 // Platform admin - no tenant, but actor is platform
                 // They must use explicit no-tenant scope for genuinely tenant-less ops via service, not via this middleware
                 // Here we leave TenantId null but set actor
@@ -204,4 +212,4 @@ public static class TenantResolutionMiddlewareExtensions
 // app.UseMiddleware<TenantResolutionMiddleware>(); // after auth, before authorization
 // app.UseAuthorization();
 // app.UseEndpoints...
-}
+

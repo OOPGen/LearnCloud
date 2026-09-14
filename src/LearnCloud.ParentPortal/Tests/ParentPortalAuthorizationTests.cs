@@ -33,11 +33,11 @@ public class ParentPortalAuthorizationTests
             await db.SaveChangesAsync();
 
             var grade = new Grade { TenantId=tenantId, Name="Grade 5", Code="G5", AcademicYearId=2026 };
-            db.Grades.Add(grade);
+            db.Set<Grade>().Add(grade);
             await db.SaveChangesAsync();
 
-            var stream = new Stream { TenantId=tenantId, GradeId=grade.Id, Name="Blue", Capacity=40, AcademicYearId=2026 };
-            db.Streams.Add(stream);
+            var stream = new ClassStream { TenantId=tenantId, GradeId=grade.Id, Name="Blue", Capacity=40, AcademicYearId=2026 };
+            db.Set<ClassStream>().Add(stream);
             await db.SaveChangesAsync();
 
             var studentA = new Student { TenantId=tenantId, StudentNumber="2026-001", FirstName="Thabo", LastName="Ndlovu", GradeId=grade.Id, StreamId=stream.Id, AcademicYearId=2026 };
@@ -103,12 +103,12 @@ public class ParentPortalAuthorizationTests
             await db.SaveChangesAsync();
 
             var grade = new Grade { TenantId=tenantId, Name="Grade 5", Code="G5", AcademicYearId=2026 };
-            db.Grades.Add(grade);
+            db.Set<Grade>().Add(grade);
             await db.SaveChangesAsync();
 
-            var streamBlue = new Stream { TenantId=tenantId, GradeId=grade.Id, Name="Blue", Capacity=40, AcademicYearId=2026 };
-            var streamGreen = new Stream { TenantId=tenantId, GradeId=grade.Id, Name="Green", Capacity=40, AcademicYearId=2026 };
-            db.Streams.AddRange(streamBlue, streamGreen);
+            var streamBlue = new ClassStream { TenantId=tenantId, GradeId=grade.Id, Name="Blue", Capacity=40, AcademicYearId=2026 };
+            var streamGreen = new ClassStream { TenantId=tenantId, GradeId=grade.Id, Name="Green", Capacity=40, AcademicYearId=2026 };
+            db.Set<ClassStream>().AddRange(streamBlue, streamGreen);
             await db.SaveChangesAsync();
 
             var student1 = new Student { TenantId=tenantId, StudentNumber="2026-001", FirstName="Thabo", LastName="Ndlovu", GradeId=grade.Id, StreamId=streamBlue.Id, AcademicYearId=2026 };
@@ -147,10 +147,10 @@ public class ParentPortalAuthorizationTests
             var guardian = new Guardian { TenantId=1, FirstName="John", LastName="A", Phone="111" };
             db.Set<Guardian>().Add(guardian);
             var grade = new Grade { TenantId=1, Name="Grade 5", Code="G5", AcademicYearId=2026 };
-            db.Grades.Add(grade);
+            db.Set<Grade>().Add(grade);
             await db.SaveChangesAsync();
-            var stream = new Stream { TenantId=1, GradeId=grade.Id, Name="Blue", Capacity=40, AcademicYearId=2026 };
-            db.Streams.Add(stream);
+            var stream = new ClassStream { TenantId=1, GradeId=grade.Id, Name="Blue", Capacity=40, AcademicYearId=2026 };
+            db.Set<ClassStream>().Add(stream);
             await db.SaveChangesAsync();
             var student = new Student { TenantId=1, StudentNumber="2026-001", FirstName="Thabo", LastName="A", GradeId=grade.Id, StreamId=stream.Id, AcademicYearId=2026 };
             db.Set<Student>().Add(student);
@@ -164,10 +164,10 @@ public class ParentPortalAuthorizationTests
             var guardian = new Guardian { TenantId=2, FirstName="John", LastName="A", Phone="111" };
             db.Set<Guardian>().Add(guardian);
             var grade = new Grade { TenantId=2, Name="Grade 5", Code="G5", AcademicYearId=2026 };
-            db.Grades.Add(grade);
+            db.Set<Grade>().Add(grade);
             await db.SaveChangesAsync();
-            var stream = new Stream { TenantId=2, GradeId=grade.Id, Name="Blue", Capacity=40, AcademicYearId=2026 };
-            db.Streams.Add(stream);
+            var stream = new ClassStream { TenantId=2, GradeId=grade.Id, Name="Blue", Capacity=40, AcademicYearId=2026 };
+            db.Set<ClassStream>().Add(stream);
             await db.SaveChangesAsync();
             var student = new Student { TenantId=2, StudentNumber="2026-001", FirstName="Thabo", LastName="A", GradeId=grade.Id, StreamId=stream.Id, AcademicYearId=2026 };
             db.Set<Student>().Add(student);
@@ -189,9 +189,4 @@ public class ParentPortalAuthorizationTests
     }
 }
 
-// Stub entities for test compilation
-public class Guardian : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public long? UserId { get; set; } public string FirstName { get; set; } = ""; public string LastName { get; set; } = ""; public string Phone { get; set; } = ""; public string? Email { get; set; } public string? Address { get; set; } }
-public class GuardianStudentLink : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public long GuardianId { get; set; } public long StudentId { get; set; } public bool IsPrimaryContact { get; set; } public bool IsBillingContact { get; set; } }
-public class Student : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public string StudentNumber { get; set; } = ""; public string FirstName { get; set; } = ""; public string LastName { get; set; } public long GradeId { get; set; } public long StreamId { get; set; } public long AcademicYearId { get; set; } public string Status { get; set; } = "active"; public string? PhotoUrl { get; set; } }
-public class Grade : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public string Name { get; set; } = ""; public string Code { get; set; } = ""; public long AcademicYearId { get; set; } }
-public class Stream : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public long GradeId { get; set; } public string Name { get; set; } = ""; public int Capacity { get; set; } }
+// Test data uses the canonical entities from LearnCloud.Domain.Entities.

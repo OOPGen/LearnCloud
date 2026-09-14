@@ -1,3 +1,5 @@
+using LearnCloud.AttendanceTimetable.Entities;
+using LearnCloud.HR.Entities;
 using LearnCloud.MultiTenancy.Context;
 using LearnCloud.Domain.Entities;
 using LearnCloud.MultiTenancy.Entities;
@@ -27,7 +29,7 @@ public class TeacherAuthorizationService : ITeacherAuthorizationService
     public async Task<long> GetTeacherStaffIdAsync(long tenantId, long userId, CancellationToken ct = default)
     {
         // Staff linked to user account via user_id
-        var staff = await _db.Set<StaffProfile>().FirstOrDefaultAsync(s => s.TenantId == tenantId && s.UserId == userId && !s.IsDeleted, ct)
+        var staff = await _db.Set<Staff>().FirstOrDefaultAsync(s => s.TenantId == tenantId && s.UserId == userId && !s.IsDeleted, ct)
                     ?? throw new UnauthorizedAccessException($"User {userId} is not a teacher staff in tenant {tenantId}. Must be linked to staff profile.");
         return staff.Id;
     }
@@ -35,7 +37,7 @@ public class TeacherAuthorizationService : ITeacherAuthorizationService
     public async Task<bool> IsAssignedToClassAsync(long tenantId, long teacherStaffId, long gradeId, long streamId, CancellationToken ct = default)
     {
         // Check 1: Is class teacher of stream?
-        var isClassTeacher = await _db.Streams.AnyAsync(s => s.TenantId == tenantId && s.Id == streamId && s.GradeId == gradeId && s.ClassTeacherStaffId == teacherStaffId && !s.IsDeleted, ct);
+        var isClassTeacher = await _db.Set<ClassStream>().AnyAsync(s => s.TenantId == tenantId && s.Id == streamId && s.GradeId == gradeId && s.ClassTeacherStaffId == teacherStaffId && !s.IsDeleted, ct);
         if (isClassTeacher) return true;
 
         // Check 2: Assigned via timetable_slots for current academic year/term or any active timetable?
@@ -57,7 +59,7 @@ public class TeacherAuthorizationService : ITeacherAuthorizationService
 
     public async Task<List<(long gradeId, long streamId)>> GetAssignedClassesAsync(long tenantId, long teacherStaffId, CancellationToken ct = default)
     {
-        var classTeacherStreams = await _db.Streams
+        var classTeacherStreams = await _db.Set<ClassStream>()
             .Where(s => s.TenantId == tenantId && s.ClassTeacherStaffId == teacherStaffId && !s.IsDeleted)
             .Select(s => new { s.GradeId, s.Id })
             .ToListAsync(ct);

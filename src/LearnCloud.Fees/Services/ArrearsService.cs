@@ -60,8 +60,8 @@ public class ArrearsService : IArrearsService
         var gradeIds = studentsDict.Values.Select(s => s.GradeId).Distinct().ToList();
         var streamIds = studentsDict.Values.Select(s => s.StreamId).Distinct().ToList();
 
-        var gradesDict = await _db.Grades.Where(g => gradeIds.Contains(g.Id)).ToDictionaryAsync(g => g.Id, ct);
-        var streamsDict = await _db.Streams.Where(s => streamIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, ct);
+        var gradesDict = await _db.Set<Grade>().Where(g => gradeIds.Contains(g.Id)).ToDictionaryAsync(g => g.Id, ct);
+        var streamsDict = await _db.Set<ClassStream>().Where(s => streamIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, ct);
 
         // Batch load billing guardian phone via guardian_student_links is_billing
         var billingLinks = await _db.Set<GuardianStudentLink>()
@@ -75,7 +75,7 @@ public class ArrearsService : IArrearsService
         {
             studentsDict.TryGetValue(inv.StudentId, out var student);
             Grade? grade = null;
-            Stream? stream = null;
+            ClassStream? stream = null;
             if (student != null)
             {
                 gradesDict.TryGetValue(student.GradeId, out grade);

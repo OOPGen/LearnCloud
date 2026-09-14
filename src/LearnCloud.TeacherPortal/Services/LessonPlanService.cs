@@ -59,8 +59,8 @@ public class LessonPlanService : ILessonPlanService
         var result = new List<LessonPlanDto>();
         foreach (var lp in list)
         {
-            var grade = await _db.Grades.FirstOrDefaultAsync(g => g.Id == lp.GradeId, ct);
-            var stream = await _db.Streams.FirstOrDefaultAsync(s => s.Id == lp.StreamId, ct);
+            var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == lp.GradeId, ct);
+            var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == lp.StreamId, ct);
             var subject = await _db.Set<Subject>().FirstOrDefaultAsync(s => s.Id == lp.SubjectId, ct);
             result.Add(new LessonPlanDto(lp.Id, lp.GradeId, grade?.Name ?? "", lp.StreamId, stream?.Name ?? "", lp.SubjectId, subject?.Name ?? "", lp.Date, lp.Objective, lp.Activities, lp.Resources, lp.Assessment, lp.Reflection, lp.Status));
         }
@@ -71,8 +71,8 @@ public class LessonPlanService : ILessonPlanService
     {
         var lp = await _db.Set<LessonPlan>().FirstOrDefaultAsync(x => x.Id == id && x.TenantId == tenantId && !x.IsDeleted, ct) ?? throw new InvalidOperationException("Lesson plan not found");
         if (lp.TeacherStaffId != teacherStaffId) throw new UnauthorizedAccessException("Not your lesson plan");
-        var grade = await _db.Grades.FirstOrDefaultAsync(g => g.Id == lp.GradeId, ct);
-        var stream = await _db.Streams.FirstOrDefaultAsync(s => s.Id == lp.StreamId, ct);
+        var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == lp.GradeId, ct);
+        var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == lp.StreamId, ct);
         var subject = await _db.Set<Subject>().FirstOrDefaultAsync(s => s.Id == lp.SubjectId, ct);
         return new LessonPlanDto(lp.Id, lp.GradeId, grade?.Name ?? "", lp.StreamId, stream?.Name ?? "", lp.SubjectId, subject?.Name ?? "", lp.Date, lp.Objective, lp.Activities, lp.Resources, lp.Assessment, lp.Reflection, lp.Status);
     }

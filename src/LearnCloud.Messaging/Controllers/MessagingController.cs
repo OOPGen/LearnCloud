@@ -176,7 +176,7 @@ public class MessagingController : ControllerBase
             AudienceFilterJson = System.Text.Json.JsonSerializer.Serialize(req.Audience),
             Body = req.CustomBody ?? "",
             Subject = req.CustomSubject,
-            TotalRecipients = preview.TotalRecipients - preview.FilteredOutOptOut - preview.FilteredOutNoContact,
+            TotalRecipients = preview.TotalRecipients - preview.FilteredOptOut - preview.FilteredNoContact,
             EstimatedCost = preview.CostEstimate.TotalCost,
             Currency = preview.CostEstimate.Currency,
             Status = MessageStatus.Draft,
@@ -297,23 +297,9 @@ public class MessagingController : ControllerBase
         batch.QueuedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
 
-        // Enqueue background job - for V1 we start Task.Run, in prod use Hangfire
-        var job = _sp.GetService(typeof(Jobs.MessagingBackgroundJob)) as Jobs.MessagingBackgroundJob;
-        if (job != null)
-        {
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    using var scope = _tenantContext.BeginTenantScope(TenantId);
-                    await job.ProcessBatchAsync(batch.Id, CancellationToken.None);
-                }
-                catch (Exception ex)
-                {
-                    // C6 FIXED: Removed // C6 FIXED: Removed Console.WriteLine, should use ILogger
-                }
-            }, ct);
-        }
+        // Sent by MessagingQueueWorker in its own scope. The previous Task.Run reused this
+        // request's DbContext after the request ended and discarded every exception.
+        await _sp.GetRequiredService<Jobs.IMessageBatchQueue>().EnqueueAsync(batch.Id, ct);
 
         return Ok(new { message = "Batch queued for sending", batchId = batch.Id, status = batch.Status.ToString() });
     }

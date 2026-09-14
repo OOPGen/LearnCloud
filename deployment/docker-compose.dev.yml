@@ -1,0 +1,26 @@
+# Local development database only. Started by scripts/dev-setup.ps1, which generates the
+# password and stores it in dotnet user-secrets for the API. Not for production.
+name: learncloud-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: learncloud-dev-db
+    environment:
+      POSTGRES_DB: learncloud
+      POSTGRES_USER: learncloud
+      POSTGRES_PASSWORD: ${LEARNCLOUD_DEV_DB_PASSWORD:?Run scripts/dev-setup.ps1 to generate the dev database password}
+    # 55432, not 5432: other local PostgreSQL instances commonly hold 5432, and the API
+    # would silently connect to the wrong server.
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - learncloud_dev_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U learncloud -d learncloud"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  learncloud_dev_pgdata:

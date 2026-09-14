@@ -1,3 +1,6 @@
+using Role = LearnCloud.Auth.Entities.Role;
+using UserRole = LearnCloud.Auth.Entities.UserRole;
+using User = LearnCloud.Auth.Entities.User;
 using LearnCloud.MultiTenancy.Entities;
 using LearnCloud.MultiTenancy.Context;
 using LearnCloud.PlatformAdmin.Entities;

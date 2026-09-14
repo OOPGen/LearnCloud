@@ -27,7 +27,7 @@ public class HomeworkService : IHomeworkService
         await _authz.EnsureTeachingSubjectInClassAsync(tenantId, teacherStaffId, req.GradeId, req.StreamId, req.SubjectId, ct);
 
         // For demo, academic year/term from current settings or first grade
-        var grade = await _db.Grades.FirstOrDefaultAsync(g => g.Id == req.GradeId, ct);
+        var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == req.GradeId, ct);
         var entity = new HomeworkAssignment
         {
             TenantId = tenantId,
@@ -76,8 +76,8 @@ public class HomeworkService : IHomeworkService
         var result = new List<HomeworkAssignmentDto>();
         foreach (var h in list)
         {
-            var grade = await _db.Grades.FirstOrDefaultAsync(g => g.Id == h.GradeId, ct);
-            var stream = await _db.Streams.FirstOrDefaultAsync(s => s.Id == h.StreamId, ct);
+            var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == h.GradeId, ct);
+            var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == h.StreamId, ct);
             var subject = await _db.Set<Subject>().FirstOrDefaultAsync(s => s.Id == h.SubjectId, ct);
             var total = await _db.Set<HomeworkSubmission>().CountAsync(s => s.AssignmentId == h.Id && !s.IsDeleted, ct);
             var submitted = await _db.Set<HomeworkSubmission>().CountAsync(s => s.AssignmentId == h.Id && s.Status == "submitted" && !s.IsDeleted, ct);
@@ -91,8 +91,8 @@ public class HomeworkService : IHomeworkService
     {
         var h = await _db.Set<HomeworkAssignment>().FirstOrDefaultAsync(x => x.Id == assignmentId && x.TenantId == tenantId && !x.IsDeleted, ct) ?? throw new InvalidOperationException("Assignment not found");
         if (h.TeacherStaffId != teacherStaffId) throw new UnauthorizedAccessException("Not your assignment");
-        var grade = await _db.Grades.FirstOrDefaultAsync(g => g.Id == h.GradeId, ct);
-        var stream = await _db.Streams.FirstOrDefaultAsync(s => s.Id == h.StreamId, ct);
+        var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == h.GradeId, ct);
+        var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == h.StreamId, ct);
         var subject = await _db.Set<Subject>().FirstOrDefaultAsync(s => s.Id == h.SubjectId, ct);
         var total = await _db.Set<HomeworkSubmission>().CountAsync(s => s.AssignmentId == h.Id && !s.IsDeleted, ct);
         var submitted = await _db.Set<HomeworkSubmission>().CountAsync(s => s.AssignmentId == h.Id && s.Status == "submitted" && !s.IsDeleted, ct);

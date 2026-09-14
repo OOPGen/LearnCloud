@@ -29,8 +29,8 @@ public class MarksEntryService : IMarksEntryService
         // Enforce teacher assigned to class + subject
         await _authz.EnsureTeachingSubjectInClassAsync(tenantId, teacherStaffId, assessment.GradeId, assessment.StreamId, assessment.SubjectId, ct);
 
-        var grade = await _db.Grades.FirstOrDefaultAsync(g => g.Id == assessment.GradeId, ct);
-        var stream = await _db.Streams.FirstOrDefaultAsync(s => s.Id == assessment.StreamId, ct);
+        var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == assessment.GradeId, ct);
+        var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == assessment.StreamId, ct);
         var subject = await _db.Set<Subject>().FirstOrDefaultAsync(s => s.Id == assessment.SubjectId, ct);
 
         var students = await _db.Set<Student>()
@@ -105,10 +105,13 @@ public class MarksEntryService : IMarksEntryService
                     StudentId = item.StudentId,
                     Score = item.IsAbsent ? null : item.Score,
                     GradeId = assessment.GradeId,
-                    // StreamId, AcademicYearId etc would be set in real entity
+                    StreamId = assessment.StreamId,
+                    SubjectId = assessment.SubjectId,
+                    AcademicYearId = assessment.AcademicYearId,
+                    TermId = assessment.TermId,
+                    MaxScore = assessment.MaxScore,
                     CreatedBy = userId
                 };
-                // For our stub StudentMark, we need to set required fields via base? We'll just add
                 _db.Set<StudentMark>().Add(newMark);
             }
             else

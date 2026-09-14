@@ -5,32 +5,19 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using LearnCloud.MultiTenancy.Context;
+using LearnCloud.MultiTenancy.Entities;
+using LearnCloud.PlatformBilling.Entities;
 
 namespace LearnCloud.Auth.Services;
 
-public class AuthDbContext : DbContext
-{
-    public AuthDbContext(DbContextOptions<AuthDbContext> options) : base(options) {}
-    public DbSet<Tenant> Tenants => Set<Tenant>();
-    public DbSet<User> Users => Set<User>();
-    public DbSet<Role> Roles => Set<Role>();
-    public DbSet<Permission> Permissions => Set<Permission>();
-    public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
-    public DbSet<UserRole> UserRoles => Set<UserRole>();
-    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
-    public DbSet<UserToken> UserTokens => Set<UserToken>();
-    public DbSet<SubscriptionPlan> SubscriptionPlans => Set<SubscriptionPlan>();
-    public DbSet<TenantSubscription> TenantSubscriptions => Set<TenantSubscription>();
-
-    protected override void OnModelCreating(ModelBuilder b)
-    {
-        b.ApplyConfigurationsFromAssembly(typeof(AuthDbContext).Assembly);
-    }
-}
+// Auth used to run on its own AuthDbContext mapping the same tables as the platform
+// context, with its own copies of Tenant, SubscriptionPlan and TenantSubscription.
+// It now uses LearnCloudDbContext and the canonical entities.
 
 public class AuthService : IAuthService
 {
-    private readonly AuthDbContext _db;
+    private readonly LearnCloudDbContext _db;
     private readonly IPasswordHasher<User> _hasher;
     private readonly ITokenService _tokenService;
     private readonly IEmailSender _emailSender;
@@ -38,7 +25,7 @@ public class AuthService : IAuthService
     private readonly IOptions<PasswordPolicyOptions> _pwdPol;
     private readonly ILogger<AuthService> _logger;
 
-    public AuthService(AuthDbContext db, IPasswordHasher<User> hasher, ITokenService tokenService, IEmailSender emailSender, IOptions<JwtOptions> jwt, IOptions<PasswordPolicyOptions> pwdPol, ILogger<AuthService> logger)
+    public AuthService(LearnCloudDbContext db, IPasswordHasher<User> hasher, ITokenService tokenService, IEmailSender emailSender, IOptions<JwtOptions> jwt, IOptions<PasswordPolicyOptions> pwdPol, ILogger<AuthService> logger)
     {
         _db = db; _hasher = hasher; _tokenService = tokenService; _emailSender = emailSender; _jwt = jwt; _pwdPol = pwdPol; _logger = logger;
     }
@@ -50,11 +37,11 @@ public class AuthService : IAuthService
         var slugExists = await _db.Tenants.AnyAsync(t => t.Slug == req.Slug && !t.IsDeleted, ct);
         if (slugExists) throw new InvalidOperationException("Slug already taken");
 
-        var emailExists = await _db.Users.AnyAsync(u => u.Email == req.AdminEmail && u.TenantId == null || u.Email == req.AdminEmail && _db.Tenants.Any(t=>t.Slug==req.Slug && t.Id==u.TenantId), ct);
+        var emailExists = await _db.Set<User>().AnyAsync(u => u.Email == req.AdminEmail && u.TenantId == null || u.Email == req.AdminEmail && _db.Tenants.Any(t=>t.Slug==req.Slug && t.Id==u.TenantId), ct);
         // Note: allow same email across tenants? For first admin, if email exists in other tenant, we allow new user record per tenant isolation. So check only platform.
 
-        using var tx = await _db.Database.BeginTransactionAsync(ct);
-        try
+        // One unit of work under the retrying execution strategy (see InTransactionAsync).
+        var registered = await _db.InTransactionAsync(async () =>
         {
             var tenant = new Tenant
             {
@@ -70,29 +57,37 @@ public class AuthService : IAuthService
             _db.Tenants.Add(tenant);
             await _db.SaveChangesAsync(ct); // gets Id
 
-            // Find starter plan (max learners matching band) - for V1 just starter 300
-            var plan = await _db.SubscriptionPlans.FirstOrDefaultAsync(p => p.Code == "starter" && !p.IsDeleted, ct)
-                       ?? await _db.SubscriptionPlans.FirstOrDefaultAsync(p => !p.IsDeleted, ct);
+            // Every school starts a 14-day trial on the starter plan (PlatformBilling owns
+            // plans and the subscription state machine). The plan is created on first use.
+            var plan = await _db.Set<Plan>().FirstOrDefaultAsync(p => p.Code == "starter" && p.IsActive, ct);
             if (plan == null)
             {
-                // Seed default plan if none
-                plan = new SubscriptionPlan { Code="starter", Name="Starter 300", MaxLearners=300, PriceMonthly=49, PriceAnnual=490, Currency="USD", IsActive=true };
-                _db.SubscriptionPlans.Add(plan);
+                plan = new Plan
+                {
+                    Code = "starter", Name = "Starter", Description = "Up to 300 learners",
+                    PricePerLearnerPerTerm = 2.00m, MinimumCharge = 99m, LearnerLimit = 300,
+                    IncludedSmsBundle = 500, Currency = "USD", IsActive = true,
+                    // Trials must be able to use every module; with the entity default "[]"
+                    // feature gating blocked academic, fees and attendance right after signup.
+                    IncludedModulesJson = System.Text.Json.JsonSerializer.Serialize(FeatureFlags.All)
+                };
+                _db.Set<Plan>().Add(plan);
                 await _db.SaveChangesAsync(ct);
             }
 
-            var sub = new TenantSubscription
+            var trialStart = DateTime.UtcNow;
+            var sub = new Subscription
             {
                 TenantId = tenant.Id,
                 PlanId = plan.Id,
-                BillingCycle = "monthly",
-                Status = "trialing",
-                TrialEndsAt = DateTime.UtcNow.AddDays(14),
-                CurrentPeriodStart = DateTime.UtcNow,
-                CurrentPeriodEnd = DateTime.UtcNow.AddDays(14),
-                Currency = "USD"
+                State = SubscriptionState.Trialing,
+                TrialStartedAt = trialStart,
+                TrialEndsAt = trialStart.AddDays(14),
+                CurrentPeriodStart = trialStart,
+                CurrentPeriodEnd = trialStart.AddDays(14),
+                Currency = plan.Currency
             };
-            _db.TenantSubscriptions.Add(sub);
+            _db.Set<Subscription>().Add(sub);
 
             // Admin user
             var admin = new User
@@ -107,11 +102,11 @@ public class AuthService : IAuthService
                 TokenVersion = 1
             };
             admin.PasswordHash = _hasher.HashPassword(admin, req.Password);
-            _db.Users.Add(admin);
+            _db.Set<User>().Add(admin);
             await _db.SaveChangesAsync(ct);
 
             // Assign SCHOOL_ADMIN role - ensure roles seeded
-            var schoolAdminRole = await _db.Roles.FirstOrDefaultAsync(r => r.TenantId == tenant.Id && r.Code == "SCHOOL_ADMIN", ct);
+            var schoolAdminRole = await _db.Set<Role>().FirstOrDefaultAsync(r => r.TenantId == tenant.Id && r.Code == "SCHOOL_ADMIN", ct);
             if (schoolAdminRole == null)
             {
                 // SECURITY H7 FIX: Validate role creation - prevent privilege escalation
@@ -119,24 +114,24 @@ public class AuthService : IAuthService
                 
                 // Fallback seed from platform template or create
                 schoolAdminRole = new Role { TenantId = tenant.Id, Code="SCHOOL_ADMIN", Name="School Admin", IsSystem=true, Description="IT Admin god" };
-                _db.Roles.Add(schoolAdminRole);
+                _db.Set<Role>().Add(schoolAdminRole);
                 await _db.SaveChangesAsync(ct);
 
                 // Copy permissions from platform template? For demo, assign all tenant perms (excluding platform)
                 // SECURITY H7: Only tenant permissions, never platform
-                var tenantPerms = await _db.Permissions.Where(p => !p.Code.StartsWith("platform.") && !p.Code.StartsWith("tenants.")).ToListAsync(ct);
+                var tenantPerms = await _db.Set<Permission>().Where(p => !p.Code.StartsWith("platform.") && !p.Code.StartsWith("tenants.")).ToListAsync(ct);
                 foreach (var perm in tenantPerms)
                 {
                     RoleSecurityGuard.ValidatePermissionAssignment(perm.Code, tenant.Id);
                 }
                 foreach (var perm in tenantPerms)
                 {
-                    _db.RolePermissions.Add(new RolePermission { TenantId = tenant.Id, RoleId = schoolAdminRole.Id, PermissionId = perm.Id });
+                    _db.Set<RolePermission>().Add(new RolePermission { TenantId = tenant.Id, RoleId = schoolAdminRole.Id, PermissionId = perm.Id });
                 }
                 await _db.SaveChangesAsync(ct);
             }
 
-            _db.UserRoles.Add(new UserRole { TenantId = tenant.Id, UserId = admin.Id, RoleId = schoolAdminRole.Id });
+            _db.Set<UserRole>().Add(new UserRole { TenantId = tenant.Id, UserId = admin.Id, RoleId = schoolAdminRole.Id });
             await _db.SaveChangesAsync(ct);
 
             // Email verification token - single-use hashed, 24h
@@ -150,22 +145,16 @@ public class AuthService : IAuthService
                 TokenHash = hashedEmailToken,
                 ExpiresAt = DateTime.UtcNow.AddHours(_pwdPol.Value.EmailVerificationTokenHours)
             };
-            _db.UserTokens.Add(emailToken);
+            _db.Set<UserToken>().Add(emailToken);
             await _db.SaveChangesAsync(ct);
 
-            await tx.CommitAsync(ct);
+            return (Response: new RegisterTenantResponse(tenant.Id, tenant.Slug, admin.Id, sub.TrialEndsAt!.Value.ToString("o"), true), Admin: admin, RawEmailToken: rawEmailToken);
+        }, ct);
 
-            // Send email outside transaction - never log tokens!
-            _logger.LogInformation("Tenant {Slug} registered with admin {Email} from ip {Ip}", tenant.Slug, admin.Email, ip);
-            await _emailSender.SendEmailVerificationAsync(admin.Email, admin.DisplayName, rawEmailToken, tenant.Id);
-
-            return new RegisterTenantResponse(tenant.Id, tenant.Slug, admin.Id, sub.TrialEndsAt!.Value.ToString("o"), true);
-        }
-        catch
-        {
-            await tx.RollbackAsync(ct);
-            throw;
-        }
+        // Email only after the commit succeeded. Never log tokens.
+        _logger.LogInformation("Tenant {Slug} registered with admin {Email} from ip {Ip}", registered.Response.Slug, registered.Admin.Email, ip);
+        await _emailSender.SendEmailVerificationAsync(registered.Admin.Email, registered.Admin.DisplayName, registered.RawEmailToken, registered.Response.TenantId);
+        return registered.Response;
     }
 
     public async Task<TokenResponse> LoginAsync(LoginRequest req, string ip, CancellationToken ct = default)
@@ -179,16 +168,16 @@ public class AuthService : IAuthService
             if (tenant != null)
             {
                 tenantId = tenant.Id;
-                user = await _db.Users.Include(u=>u.UserRoles).ThenInclude(ur=>ur.Role)
+                user = await _db.Set<User>().Include(u=>u.UserRoles).ThenInclude(ur=>ur.Role)
                     .FirstOrDefaultAsync(u => u.Email == req.Email.ToLower() && u.TenantId == tenant.Id && !u.IsDeleted, ct);
             }
         }
         else
         {
             // Platform login or infer: try tenant by email? For simplicity, search any tenant user, then platform
-            user = await _db.Users.Include(u=>u.UserRoles).ThenInclude(ur=>ur.Role)
+            user = await _db.Set<User>().Include(u=>u.UserRoles).ThenInclude(ur=>ur.Role)
                 .FirstOrDefaultAsync(u => u.Email == req.Email.ToLower() && u.TenantId != null && !u.IsDeleted, ct)
-                ?? await _db.Users.Include(u=>u.UserRoles).ThenInclude(ur=>ur.Role)
+                ?? await _db.Set<User>().Include(u=>u.UserRoles).ThenInclude(ur=>ur.Role)
                 .FirstOrDefaultAsync(u => u.Email == req.Email.ToLower() && u.TenantId == null && !u.IsDeleted, ct);
             tenantId = user?.TenantId;
         }
@@ -233,12 +222,12 @@ public class AuthService : IAuthService
         user.LockoutEnd = null;
         await _db.SaveChangesAsync(ct);
 
-        var roleCodes = await _db.UserRoles.Where(ur => ur.UserId == user.Id && !ur.IsDeleted)
-            .Join(_db.Roles, ur=>ur.RoleId, r=>r.Id, (ur,r)=>r.Code).ToListAsync(ct);
+        var roleCodes = await _db.Set<UserRole>().Where(ur => ur.UserId == user.Id && !ur.IsDeleted)
+            .Join(_db.Set<Role>(), ur=>ur.RoleId, r=>r.Id, (ur,r)=>r.Code).ToListAsync(ct);
 
-        var permCodes = await _db.UserRoles.Where(ur=>ur.UserId==user.Id && !ur.IsDeleted)
-            .Join(_db.RolePermissions, ur=>ur.RoleId, rp=>rp.RoleId, (ur,rp)=>rp.PermissionId)
-            .Join(_db.Permissions, pid=>pid, p=>p.Id, (pid,p)=>p.Code).Distinct().ToListAsync(ct);
+        var permCodes = await _db.Set<UserRole>().Where(ur=>ur.UserId==user.Id && !ur.IsDeleted)
+            .Join(_db.Set<RolePermission>(), ur=>ur.RoleId, rp=>rp.RoleId, (ur,rp)=>rp.PermissionId)
+            .Join(_db.Set<Permission>(), pid=>pid, p=>p.Id, (pid,p)=>p.Code).Distinct().ToListAsync(ct);
 
         var accessToken = _tokenService.GenerateAccessToken(user, roleCodes, permCodes);
 
@@ -254,7 +243,7 @@ public class AuthService : IAuthService
             CreatedByIp = ip,
             Device = req.Device
         };
-        _db.RefreshTokens.Add(refreshEntity);
+        _db.Set<RefreshToken>().Add(refreshEntity);
         await _db.SaveChangesAsync(ct);
 
         _logger.LogInformation("User {UserId} logged in from {Ip} tenant {TenantId}", user.Id, ip, user.TenantId);
@@ -265,7 +254,7 @@ public class AuthService : IAuthService
     public async Task<TokenResponse> RefreshAsync(RefreshRequest req, string ip, CancellationToken ct = default)
     {
         var hashed = _tokenService.HashToken(req.RefreshToken);
-        var stored = await _db.RefreshTokens.Include(rt=>rt.User).FirstOrDefaultAsync(rt=>rt.TokenHash==hashed, ct);
+        var stored = await _db.Set<RefreshToken>().Include(rt=>rt.User).FirstOrDefaultAsync(rt=>rt.TokenHash==hashed, ct);
 
         if (stored == null)
         {
@@ -278,7 +267,7 @@ public class AuthService : IAuthService
         if (stored.IsRevoked || stored.IsExpired || stored.ReplacedByTokenId.HasValue)
         {
             // Revoke whole family
-            var familyTokens = await _db.RefreshTokens.Where(rt=>rt.FamilyId==stored.FamilyId && rt.UserId==stored.UserId && !rt.IsDeleted).ToListAsync(ct);
+            var familyTokens = await _db.Set<RefreshToken>().Where(rt=>rt.FamilyId==stored.FamilyId && rt.UserId==stored.UserId && !rt.IsDeleted).ToListAsync(ct);
             foreach (var ft in familyTokens)
             {
                 if (!ft.IsRevoked)
@@ -300,11 +289,11 @@ public class AuthService : IAuthService
         // Check token version still valid (revoked by password change)
         // If TokenVersion in JWT vs user mismatch, refresh should still check user.TokenVersion? Stored refresh doesn't contain version but user may have incremented version after password change -> all refresh should be revoked already
 
-        var roleCodes = await _db.UserRoles.Where(ur => ur.UserId == user.Id && !ur.IsDeleted)
-            .Join(_db.Roles, ur=>ur.RoleId, r=>r.Id, (ur,r)=>r.Code).ToListAsync(ct);
-        var permCodes = await _db.UserRoles.Where(ur=>ur.UserId==user.Id && !ur.IsDeleted)
-            .Join(_db.RolePermissions, ur=>ur.RoleId, rp=>rp.RoleId, (ur,rp)=>rp.PermissionId)
-            .Join(_db.Permissions, pid=>pid, p=>p.Id, (pid,p)=>p.Code).Distinct().ToListAsync(ct);
+        var roleCodes = await _db.Set<UserRole>().Where(ur => ur.UserId == user.Id && !ur.IsDeleted)
+            .Join(_db.Set<Role>(), ur=>ur.RoleId, r=>r.Id, (ur,r)=>r.Code).ToListAsync(ct);
+        var permCodes = await _db.Set<UserRole>().Where(ur=>ur.UserId==user.Id && !ur.IsDeleted)
+            .Join(_db.Set<RolePermission>(), ur=>ur.RoleId, rp=>rp.RoleId, (ur,rp)=>rp.PermissionId)
+            .Join(_db.Set<Permission>(), pid=>pid, p=>p.Id, (pid,p)=>p.Code).Distinct().ToListAsync(ct);
 
         var newAccess = _tokenService.GenerateAccessToken(user, roleCodes, permCodes);
         var (newRaw, newHashed) = _tokenService.GenerateRefreshToken();
@@ -324,7 +313,7 @@ public class AuthService : IAuthService
         // Mark old as replaced
         stored.RevokedAt = DateTime.UtcNow;
         stored.RevokedReason = "rotated";
-        _db.RefreshTokens.Add(newRefresh);
+        _db.Set<RefreshToken>().Add(newRefresh);
         await _db.SaveChangesAsync(ct);
 
         // Update ReplacedBy
@@ -336,11 +325,11 @@ public class AuthService : IAuthService
 
     public async Task<EmailVerificationResponse> VerifyEmailAsync(VerifyEmailRequest req, CancellationToken ct = default)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u=>u.Email==req.Email.ToLower() && !u.IsDeleted, ct);
+        var user = await _db.Set<User>().FirstOrDefaultAsync(u=>u.Email==req.Email.ToLower() && !u.IsDeleted, ct);
         if (user == null) throw new InvalidOperationException("Invalid token"); // same message for security
 
         var hashed = _tokenService.HashToken(req.Token);
-        var token = await _db.UserTokens.FirstOrDefaultAsync(t=>t.UserId==user.Id && t.TokenType==UserTokenType.EmailVerification && t.TokenHash==hashed && !t.IsDeleted, ct);
+        var token = await _db.Set<UserToken>().FirstOrDefaultAsync(t=>t.UserId==user.Id && t.TokenType==UserTokenType.EmailVerification && t.TokenHash==hashed && !t.IsDeleted, ct);
         if (token == null || token.IsUsed || token.ExpiresAt < DateTime.UtcNow)
             throw new InvalidOperationException("Invalid or expired token");
 
@@ -364,17 +353,17 @@ public class AuthService : IAuthService
             {
                 var tenant = await _db.Tenants.FirstOrDefaultAsync(t=>t.Slug==req.TenantSlug.ToLower() && !t.IsDeleted, ct);
                 if (tenant != null)
-                    user = await _db.Users.FirstOrDefaultAsync(u=>u.Email==req.Email.ToLower() && u.TenantId==tenant.Id && !u.IsDeleted, ct);
+                    user = await _db.Set<User>().FirstOrDefaultAsync(u=>u.Email==req.Email.ToLower() && u.TenantId==tenant.Id && !u.IsDeleted, ct);
             }
             else
             {
-                user = await _db.Users.FirstOrDefaultAsync(u=>u.Email==req.Email.ToLower() && !u.IsDeleted, ct);
+                user = await _db.Set<User>().FirstOrDefaultAsync(u=>u.Email==req.Email.ToLower() && !u.IsDeleted, ct);
             }
 
             if (user != null)
             {
                 // Invalidate old reset tokens
-                var oldTokens = await _db.UserTokens.Where(t=>t.UserId==user.Id && t.TokenType==UserTokenType.PasswordReset && !t.IsUsed && !t.IsDeleted).ToListAsync(ct);
+                var oldTokens = await _db.Set<UserToken>().Where(t=>t.UserId==user.Id && t.TokenType==UserTokenType.PasswordReset && !t.IsUsed && !t.IsDeleted).ToListAsync(ct);
                 foreach (var ot in oldTokens) ot.IsDeleted=true;
 
                 var raw = _tokenService.GenerateOpaqueToken(32);
@@ -387,7 +376,7 @@ public class AuthService : IAuthService
                     TokenHash = hashed,
                     ExpiresAt = DateTime.UtcNow.AddHours(_pwdPol.Value.PasswordResetTokenHours)
                 };
-                _db.UserTokens.Add(ut);
+                _db.Set<UserToken>().Add(ut);
                 await _db.SaveChangesAsync(ct);
 
                 // Never log tokens!
@@ -414,11 +403,11 @@ public class AuthService : IAuthService
 
     public async Task<EmailVerificationResponse> ResetPasswordAsync(ResetPasswordRequest req, string ip, CancellationToken ct = default)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u=>u.Email==req.Email.ToLower() && !u.IsDeleted, ct);
+        var user = await _db.Set<User>().FirstOrDefaultAsync(u=>u.Email==req.Email.ToLower() && !u.IsDeleted, ct);
         if (user == null) throw new InvalidOperationException("Invalid token");
 
         var hashed = _tokenService.HashToken(req.Token);
-        var token = await _db.UserTokens.FirstOrDefaultAsync(t=>t.UserId==user.Id && t.TokenType==UserTokenType.PasswordReset && t.TokenHash==hashed && !t.IsDeleted, ct);
+        var token = await _db.Set<UserToken>().FirstOrDefaultAsync(t=>t.UserId==user.Id && t.TokenType==UserTokenType.PasswordReset && t.TokenHash==hashed && !t.IsDeleted, ct);
         if (token == null || token.IsUsed || token.ExpiresAt < DateTime.UtcNow)
             throw new InvalidOperationException("Invalid or expired token");
 
@@ -433,7 +422,7 @@ public class AuthService : IAuthService
         token.UsedAt = DateTime.UtcNow;
 
         // Revoke all refresh
-        var refreshes = await _db.RefreshTokens.Where(rt=>rt.UserId==user.Id && rt.RevokedAt==null && !rt.IsDeleted).ToListAsync(ct);
+        var refreshes = await _db.Set<RefreshToken>().Where(rt=>rt.UserId==user.Id && rt.RevokedAt==null && !rt.IsDeleted).ToListAsync(ct);
         foreach (var rt in refreshes)
         {
             rt.RevokedAt = DateTime.UtcNow;
@@ -447,7 +436,7 @@ public class AuthService : IAuthService
 
     public async Task ChangePasswordAsync(long userId, ChangePasswordRequest req, CancellationToken ct = default)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u=>u.Id==userId && !u.IsDeleted, ct) ?? throw new InvalidOperationException("User not found");
+        var user = await _db.Set<User>().FirstOrDefaultAsync(u=>u.Id==userId && !u.IsDeleted, ct) ?? throw new InvalidOperationException("User not found");
         var verify = _hasher.VerifyHashedPassword(user, user.PasswordHash, req.CurrentPassword);
         if (verify == PasswordVerificationResult.Failed)
             throw new UnauthorizedAccessException("Current password invalid");
@@ -457,7 +446,7 @@ public class AuthService : IAuthService
         user.TokenVersion++;
         user.MustChangePassword = false;
 
-        var refreshes = await _db.RefreshTokens.Where(rt=>rt.UserId==user.Id && rt.RevokedAt==null && !rt.IsDeleted).ToListAsync(ct);
+        var refreshes = await _db.Set<RefreshToken>().Where(rt=>rt.UserId==user.Id && rt.RevokedAt==null && !rt.IsDeleted).ToListAsync(ct);
         foreach (var rt in refreshes)
         {
             rt.RevokedAt = DateTime.UtcNow;
@@ -470,7 +459,7 @@ public class AuthService : IAuthService
 
     public async Task RevokeAllRefreshTokensAsync(long userId, string reason, CancellationToken ct = default)
     {
-        var tokens = await _db.RefreshTokens.Where(rt=>rt.UserId==userId && rt.RevokedAt==null && !rt.IsDeleted).ToListAsync(ct);
+        var tokens = await _db.Set<RefreshToken>().Where(rt=>rt.UserId==userId && rt.RevokedAt==null && !rt.IsDeleted).ToListAsync(ct);
         foreach (var t in tokens)
         {
             t.RevokedAt = DateTime.UtcNow;
@@ -481,10 +470,89 @@ public class AuthService : IAuthService
 
     public async Task<UserInfoDto> GetUserInfoAsync(long userId, long? tenantId, CancellationToken ct = default)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u=>u.Id==userId && (tenantId==null || u.TenantId==tenantId) && !u.IsDeleted, ct) ?? throw new InvalidOperationException("User not found");
-        var roles = await _db.UserRoles.Where(ur=>ur.UserId==user.Id && !ur.IsDeleted).Join(_db.Roles, ur=>ur.RoleId, r=>r.Id, (ur,r)=>r.Code).ToListAsync(ct);
-        var perms = await _db.UserRoles.Where(ur=>ur.UserId==user.Id && !ur.IsDeleted).Join(_db.RolePermissions, ur=>ur.RoleId, rp=>rp.RoleId, (ur,rp)=>rp.PermissionId).Join(_db.Permissions, pid=>pid, p=>p.Id, (pid,p)=>p.Code).Distinct().ToListAsync(ct);
+        var user = await _db.Set<User>().FirstOrDefaultAsync(u=>u.Id==userId && (tenantId==null || u.TenantId==tenantId) && !u.IsDeleted, ct) ?? throw new InvalidOperationException("User not found");
+        var roles = await _db.Set<UserRole>().Where(ur=>ur.UserId==user.Id && !ur.IsDeleted).Join(_db.Set<Role>(), ur=>ur.RoleId, r=>r.Id, (ur,r)=>r.Code).ToListAsync(ct);
+        var perms = await _db.Set<UserRole>().Where(ur=>ur.UserId==user.Id && !ur.IsDeleted).Join(_db.Set<RolePermission>(), ur=>ur.RoleId, rp=>rp.RoleId, (ur,rp)=>rp.PermissionId).Join(_db.Set<Permission>(), pid=>pid, p=>p.Id, (pid,p)=>p.Code).Distinct().ToListAsync(ct);
         return new UserInfoDto(user.Id, user.TenantId, user.Email, user.DisplayName, user.EmailVerified, user.Status, user.TokenVersion, user.LastLoginAt, roles, perms);
+    }
+
+    // Session management. A "session" is one refresh-token family: rotation
+    // replaces the token but keeps FamilyId, so the family is the device.
+    // Declared on IAuthService but never implemented, which broke the build.
+
+    public async Task<List<UserSessionDto>> GetActiveSessionsAsync(long userId, CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        var live = await _db.Set<RefreshToken>()
+            .Where(rt => rt.UserId == userId && rt.RevokedAt == null && rt.ExpiresAt > now && !rt.IsDeleted)
+            .ToListAsync(ct);
+
+        // One row per family: the newest token carries the current device and IP.
+        return live
+            .GroupBy(rt => rt.FamilyId)
+            .Select(g => g.OrderByDescending(rt => rt.CreatedAt).First())
+            .OrderByDescending(rt => rt.CreatedAt)
+            .Select(rt => new UserSessionDto(
+                rt.FamilyId,
+                rt.Device ?? "unknown",
+                rt.CreatedByIp,
+                rt.CreatedAt,
+                rt.ExpiresAt,
+                // Which family is the caller's own cannot be known here; the
+                // interface takes no current-token argument. The controller
+                // marks it from the presented refresh cookie.
+                string.Empty))
+            .ToList();
+    }
+
+    public async Task RevokeSessionAsync(long userId, string familyId, string reason, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(familyId)) throw new ArgumentException("familyId is required", nameof(familyId));
+
+        var family = await _db.Set<RefreshToken>()
+            .Where(rt => rt.UserId == userId && rt.FamilyId == familyId && rt.RevokedAt == null && !rt.IsDeleted)
+            .ToListAsync(ct);
+
+        if (family.Count == 0) return;
+
+        var now = DateTime.UtcNow;
+        foreach (var rt in family)
+        {
+            rt.RevokedAt = now;
+            rt.RevokedReason = reason;
+        }
+        await _db.SaveChangesAsync(ct);
+        _logger.LogInformation("Revoked session family {Family} for user {UserId}, reason {Reason}", familyId, userId, reason);
+    }
+
+    public async Task EnforceMaxSessionsAsync(long userId, int maxFamilies = 5, CancellationToken ct = default)
+    {
+        if (maxFamilies < 1) throw new ArgumentOutOfRangeException(nameof(maxFamilies), "At least one session must be allowed.");
+
+        var now = DateTime.UtcNow;
+        var live = await _db.Set<RefreshToken>()
+            .Where(rt => rt.UserId == userId && rt.RevokedAt == null && rt.ExpiresAt > now && !rt.IsDeleted)
+            .ToListAsync(ct);
+
+        var families = live
+            .GroupBy(rt => rt.FamilyId)
+            .Select(g => new { FamilyId = g.Key, LastSeen = g.Max(rt => rt.CreatedAt), Tokens = g.ToList() })
+            .OrderByDescending(f => f.LastSeen)
+            .ToList();
+
+        if (families.Count <= maxFamilies) return;
+
+        // Keep the most recently used families, revoke the rest.
+        foreach (var stale in families.Skip(maxFamilies))
+        {
+            foreach (var rt in stale.Tokens)
+            {
+                rt.RevokedAt = now;
+                rt.RevokedReason = "max_sessions_exceeded";
+            }
+            _logger.LogInformation("Max sessions ({Max}) exceeded for user {UserId}; revoked family {Family}", maxFamilies, userId, stale.FamilyId);
+        }
+        await _db.SaveChangesAsync(ct);
     }
 }
 

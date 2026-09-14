@@ -240,7 +240,8 @@ public class LibraryService : ILibraryService
     {
         var loan = await _db.Set<Loan>().FirstOrDefaultAsync(l => l.Id == loanId && l.TenantId == tenantId && !l.IsDeleted, ct) ?? throw new InvalidOperationException("Loan not found");
         var member = await _db.Set<LibraryMember>().FirstOrDefaultAsync(m => m.Id == loan.MemberId, ct);
-        var config = await _db.Set<MembershipConfig>().FirstOrDefaultAsync(c => c.TenantId == tenantId && c.MembershipType == (member?.MemberType ?? "student") && !c.IsDeleted, ct);
+        var memberType = member?.MemberType ?? "student"; // EF expression trees cannot contain ?.
+        var config = await _db.Set<MembershipConfig>().FirstOrDefaultAsync(c => c.TenantId == tenantId && c.MembershipType == memberType && !c.IsDeleted, ct);
 
         var now = DateTime.UtcNow.Date;
         var daysOverdue = (now - loan.DueDate.Date).Days;
@@ -346,7 +347,9 @@ public class LibraryService : ILibraryService
         fine.Status = "posted_to_fee_account";
         await _db.SaveChangesAsync(ct);
 
-        var book = await _db.Set<Book>().FirstOrDefaultAsync(b => b.Id == (await _db.Set<Loan>().FirstOrDefaultAsync(l => l.Id == fine.LoanId, ct))!.BookId, ct);
+        var loan = await _db.Set<Loan>().FirstOrDefaultAsync(l => l.Id == fine.LoanId, ct)
+            ?? throw new InvalidOperationException($"Loan {fine.LoanId} for fine {fine.Id} not found");
+        var book = await _db.Set<Book>().FirstOrDefaultAsync(b => b.Id == loan.BookId, ct);
         var member = await _db.Set<LibraryMember>().FirstOrDefaultAsync(m => m.Id == fine.MemberId, ct);
 
         return new FineDto(fine.Id, fine.LoanId, book?.Title ?? "", fine.MemberId, member?.FullName ?? "", fine.FineType, fine.Amount, fine.Currency, fine.DaysOverdue, fine.Status, fine.PostedToFeeAccount, fine.FeeInvoiceId);

@@ -1,5 +1,11 @@
+using LearnCloud.MultiTenancy.Entities;
+
 namespace LearnCloud.Auth.Entities;
 
+// Auth entities share the platform base class from LearnCloud.MultiTenancy, so the
+// main context's soft-delete filter and audit stamping apply to them. They are not
+// ITenantEntity: login and token lookups must work before a tenant is resolved, so
+// services filter by TenantId explicitly.
 public class User : BaseEntity
 {
     // Nullable for platform superadmin
@@ -40,10 +46,11 @@ public enum UserTokenType
     PasswordReset = 2
 }
 
-public class UserToken : TenantOwnedEntity
+public class UserToken : BaseEntity
 {
-    // For platform users, TenantId = 0? But we make tenant-owned: platform tokens use TenantId = 0 or nullable. Here we keep TenantId nullable via base? Actually use BaseEntity + optional TenantId for platform: we will keep TenantId nullable via separate field for simplicity in Auth.
-    public new long? TenantId { get; set; } // shadow to allow null for platform if needed, but keep inherited for EF - workaround: we use BaseEntity.Instead
+    // Nullable: platform users have no tenant, and tokens are looked up by hash
+    // before any tenant is resolved, so this must not carry the tenant query filter.
+    public long? TenantId { get; set; }
     public long UserId { get; set; }
     public User User { get; set; } = null!;
     public UserTokenType TokenType { get; set; }

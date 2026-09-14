@@ -1,5 +1,5 @@
 using LearnCloud.Core.DTOs;
-using LearnCloud.Core.Entities;
+
 using LearnCloud.Domain.Entities;
 using LearnCloud.MultiTenancy.Context;
 using Microsoft.EntityFrameworkCore;
@@ -110,19 +110,6 @@ public class SubjectService : ISubjectService
         _db.Set<Subject>().Add(subject);
         await _db.SaveChangesAsync(ct);
 
-        // Audit
-        _db.AuditLogs.Add(new AuditLog
-        {
-            TenantId = tenantId,
-            UserId = userId,
-            EntityType = "Subject",
-            EntityId = subject.Id,
-            Action = "create",
-            NewValues = System.Text.Json.JsonSerializer.Serialize(req),
-            CreatedBy = userId
-        });
-        await _db.SaveChangesAsync(ct);
-
         return await GetByIdAsync(tenantId, subject.Id, ct);
     }
 
@@ -149,19 +136,6 @@ public class SubjectService : ISubjectService
 
         await _db.SaveChangesAsync(ct);
 
-        _db.AuditLogs.Add(new AuditLog
-        {
-            TenantId = tenantId,
-            UserId = userId,
-            EntityType = "Subject",
-            EntityId = subject.Id,
-            Action = "update",
-            OldValues = oldValues,
-            NewValues = System.Text.Json.JsonSerializer.Serialize(subject),
-            CreatedBy = userId
-        });
-        await _db.SaveChangesAsync(ct);
-
         return await GetByIdAsync(tenantId, id, ct);
     }
 
@@ -170,7 +144,7 @@ public class SubjectService : ISubjectService
         var subject = await _db.Set<Subject>().FirstOrDefaultAsync(s => s.TenantId == tenantId && s.Id == id && !s.IsDeleted, ct) ?? throw new InvalidOperationException("Subject not found");
 
         // Check if subject is in use in grade_subjects or timetable
-        var inUse = await _db.Set<GradeSubject>().AnyAsync(gs => gs.TenantId == tenantId && gs.SubjectId == id && !gs.IsDeleted, ct);
+        var inUse = await _db.Set<SubjectGradeLink>().AnyAsync(gs => gs.TenantId == tenantId && gs.SubjectId == id && !gs.IsDeleted, ct);
         if (inUse) throw new InvalidOperationException("Cannot delete subject that is assigned to grades - archive instead");
 
         subject.IsDeleted = true;
@@ -178,30 +152,17 @@ public class SubjectService : ISubjectService
         subject.DeletedBy = userId;
 
         await _db.SaveChangesAsync(ct);
-
-        _db.AuditLogs.Add(new AuditLog
-        {
-            TenantId = tenantId,
-            UserId = userId,
-            EntityType = "Subject",
-            EntityId = id,
-            Action = "soft_delete",
-            OldValues = $"{{\"status\":\"{subject.Status}\"}}",
-            NewValues = $"{{\"is_deleted\":true}}",
-            CreatedBy = userId
-        });
-        await _db.SaveChangesAsync(ct);
     }
 
     public async Task<GradeSubjectDto> AssignToGradeAsync(long tenantId, long userId, AssignSubjectToGradeRequest req, CancellationToken ct = default)
     {
-        var exists = await _db.Set<GradeSubject>().AnyAsync(gs => gs.TenantId == tenantId && gs.GradeId == req.GradeId && gs.SubjectId == req.SubjectId && gs.AcademicYearId == req.AcademicYearId && !gs.IsDeleted, ct);
+        var exists = await _db.Set<SubjectGradeLink>().AnyAsync(gs => gs.TenantId == tenantId && gs.GradeId == req.GradeId && gs.SubjectId == req.SubjectId && gs.AcademicYearId == req.AcademicYearId && !gs.IsDeleted, ct);
         if (exists) throw new InvalidOperationException("Subject already assigned to this grade for this academic year");
 
         var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == req.GradeId && g.TenantId == tenantId && !g.IsDeleted, ct) ?? throw new InvalidOperationException("Grade not found");
         var subject = await _db.Set<Subject>().FirstOrDefaultAsync(s => s.Id == req.SubjectId && s.TenantId == tenantId && !s.IsDeleted, ct) ?? throw new InvalidOperationException("Subject not found");
 
-        var gradeSubject = new GradeSubject
+        var gradeSubject = new SubjectGradeLink
         {
             TenantId = tenantId,
             GradeId = req.GradeId,
@@ -211,7 +172,7 @@ public class SubjectService : ISubjectService
             CreatedBy = userId
         };
 
-        _db.Set<GradeSubject>().Add(gradeSubject);
+        _db.Set<SubjectGradeLink>().Add(gradeSubject);
         await _db.SaveChangesAsync(ct);
 
         return new GradeSubjectDto(gradeSubject.Id, grade.Id, grade.Name, grade.Code, subject.Id, subject.Name, req.AcademicYearId, req.IsCompulsory);
@@ -219,7 +180,7 @@ public class SubjectService : ISubjectService
 
     public async Task<List<GradeSubjectDto>> GetByGradeAsync(long tenantId, long gradeId, long academicYearId, CancellationToken ct = default)
     {
-        var list = await _db.Set<GradeSubject>().Where(gs => gs.TenantId == tenantId && gs.GradeId == gradeId && gs.AcademicYearId == academicYearId && !gs.IsDeleted).Include(gs => gs.Grade).Include(gs => gs.Subject).ToListAsync(ct);
+        var list = await _db.Set<SubjectGradeLink>().Where(gs => gs.TenantId == tenantId && gs.GradeId == gradeId && gs.AcademicYearId == academicYearId && !gs.IsDeleted).Include(gs => gs.Grade).Include(gs => gs.Subject).ToListAsync(ct);
         return list.Select(gs => new GradeSubjectDto(gs.Id, gs.Grade.Id, gs.Grade.Name, gs.Grade.Code, gs.Subject.Id, gs.Subject.Name, gs.AcademicYearId, gs.IsCompulsory)).ToList();
     }
 

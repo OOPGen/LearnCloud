@@ -1,3 +1,6 @@
+using LearnCloud.AttendanceTimetable.Entities;
+using LearnCloud.Messaging.DTOs;
+using LearnCloud.Messaging.Entities;
 using LearnCloud.Communication.DTOs;
 using LearnCloud.Communication.Entities;
 using LearnCloud.MultiTenancy.Context;
@@ -321,12 +324,14 @@ public class CommunicationRuleEngine : ICommunicationRuleEngine
     private readonly LearnCloudDbContext _db;
     private readonly Messaging.Services.AudienceResolver _audienceResolver;
     private readonly ILogger<CommunicationRuleEngine> _logger;
+    private readonly ITenantContext _tenantContext;
 
-    public CommunicationRuleEngine(LearnCloudDbContext db, Messaging.Services.AudienceResolver audienceResolver, ILogger<CommunicationRuleEngine> logger)
+    public CommunicationRuleEngine(LearnCloudDbContext db, Messaging.Services.AudienceResolver audienceResolver, ILogger<CommunicationRuleEngine> logger, ITenantContext tenantContext)
     {
         _db = db;
         _audienceResolver = audienceResolver;
         _logger = logger;
+        _tenantContext = tenantContext;
     }
 
     public async Task<List<RuleDto>> ListRulesAsync(long tenantId, CancellationToken ct = default)
@@ -428,11 +433,14 @@ public class CommunicationRuleEngine : ICommunicationRuleEngine
     public async Task ProcessScheduledRulesAsync(CancellationToken ct = default)
     {
         // Runs via background job every hour, checks for events that need triggering
-        var activeRules = await _db.Set<CommunicationRule>().Where(r => r.TenantId == tenantId && r.IsActive && !r.IsDeleted).ToListAsync(ct); // SECURITY C5 FIX: Added TenantId filter
+        var activeRules = await _db.Set<CommunicationRule>().Where(r => r.IsActive && !r.IsDeleted).ToListAsync(ct); // Cross-tenant by design: rules are grouped by TenantId below. See Phase 2 note: must run inside an explicit no-tenant scope or the global filter returns nothing.
 
         foreach (var rule in activeRules.GroupBy(r => r.TenantId))
         {
             var tenantId = rule.Key;
+            // Each school's rules run inside that school's tenant scope, so the scans
+            // below cannot read another tenant's learners.
+            using var tenantScope = _tenantContext.BeginTenantScope(tenantId);
             foreach (var r in rule)
             {
                 try

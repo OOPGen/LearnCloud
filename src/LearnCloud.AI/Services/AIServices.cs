@@ -1,3 +1,5 @@
+using LearnCloud.AttendanceTimetable.Entities;
+using LearnCloud.MultiTenancy.Entities;
 using LearnCloud.AI.DTOs;
 using LearnCloud.AI.Entities;
 using LearnCloud.AI.Services.Providers;
@@ -29,8 +31,8 @@ public class ReportCommentService : IReportCommentService
     public async Task<GenerateCommentResponse> GenerateDraftAsync(long tenantId, long userId, GenerateCommentRequest req, CancellationToken ct = default)
     {
         var student = await _db.Set<Student>().FirstOrDefaultAsync(s => s.Id == req.StudentId && s.TenantId == tenantId && !s.IsDeleted, ct) ?? throw new InvalidOperationException("Student not found");
-        var grade = await _db.Grades.FirstOrDefaultAsync(g => g.Id == student.GradeId, ct);
-        var stream = await _db.Streams.FirstOrDefaultAsync(s => s.Id == student.StreamId, ct);
+        var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == student.GradeId, ct);
+        var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == student.StreamId, ct);
 
         // Get marks, attendance, subject performance
         var marks = await _db.Set<StudentMark>().Where(m => m.TenantId == tenantId && m.StudentId == req.StudentId && m.AcademicYearId == req.AcademicYearId && m.TermId == req.TermId && !m.IsDeleted).ToListAsync(ct);
@@ -481,8 +483,8 @@ public class AtRiskService : IAtRiskService
         foreach (var f in list)
         {
             var student = await _db.Set<Student>().FirstOrDefaultAsync(s => s.Id == f.StudentId, ct);
-            var grade = student != null ? await _db.Grades.FirstOrDefaultAsync(g => g.Id == student.GradeId, ct) : null;
-            var stream = student != null ? await _db.Streams.FirstOrDefaultAsync(s => s.Id == student.StreamId, ct) : null;
+            var grade = student != null ? await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == student.GradeId, ct) : null;
+            var stream = student != null ? await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == student.StreamId, ct) : null;
             var reasons = System.Text.Json.JsonSerializer.Deserialize<List<UnderlyingReasonDto>>(f.UnderlyingReasonsJson) ?? new List<UnderlyingReasonDto>();
 
             result.Add(new AtRiskFlagDto(

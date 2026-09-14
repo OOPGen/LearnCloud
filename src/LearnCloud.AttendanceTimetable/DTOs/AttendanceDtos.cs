@@ -21,7 +21,7 @@ public record UpdateAttendanceSettingsRequest(
 );
 
 // Period definition
-public record PeriodDefinitionDto(int PeriodNumber, string Name, string StartTime, string EndTime, bool IsBreak, int SortOrder);
+// PeriodDefinitionDto is declared in TimetableDtos.cs, its natural home.
 public record CreatePeriodRequest(string Name, string StartTime, string EndTime, bool IsBreak, int SortOrder, long? AcademicYearId);
 public record BulkPeriodsRequest(List<CreatePeriodRequest> Periods);
 

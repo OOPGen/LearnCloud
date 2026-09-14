@@ -30,7 +30,7 @@ public class Grade : TenantOwnedEntity
     public bool IsActive { get; set; } = true;
 }
 
-public class Stream : TenantOwnedEntity
+public class ClassStream : TenantOwnedEntity
 {
     public long GradeId { get; set; }
     public string Name { get; set; } = null!; // Blue, Green
@@ -49,6 +49,9 @@ public class Subject : TenantOwnedEntity
     public bool IsCore { get; set; } = true;
     public string? Department { get; set; }
     public string Status { get; set; } = "active";
+
+    // Grade curriculum links. SubjectService eager-loads this.
+    public ICollection<SubjectGradeLink> GradeSubjects { get; set; } = new List<SubjectGradeLink>();
 }
 
 public class Guardian : TenantOwnedEntity
@@ -75,19 +78,10 @@ public class GuardianStudentLink : TenantOwnedEntity
     public long AcademicYearId { get; set; }
 }
 
-public class Staff : TenantOwnedEntity
-{
-    public long? UserId { get; set; }
-    public string StaffNumber { get; set; } = null!;
-    public string FirstName { get; set; } = null!;
-    public string LastName { get; set; } = null!;
-    public string FullName => $"{FirstName} {LastName}";
-    public string EmploymentType { get; set; } = "permanent"; // permanent, contract, part_time
-    public string? Qualification { get; set; }
-    public string? NationalId { get; set; }
-    public DateTime? HireDate { get; set; }
-    public string Status { get; set; } = "active";
-}
+// Staff is owned by LearnCloud.HR.Entities.Staff, which carries department,
+// contracts, qualifications and salary. The stub that used to sit here was a
+// duplicate and was removed; reference LearnCloud.HR for staff records.
+
 
 public class StudentEnrolment : TenantOwnedEntity
 {
@@ -122,10 +116,15 @@ public class Room : TenantOwnedEntity
     public string RoomType { get; set; } = "classroom"; // classroom, lab, library, hall
 }
 
+// The one grade-to-subject curriculum link. Core used to declare a second entity,
+// GradeSubject, for the same thing: SubjectService wrote GradeSubject rows while
+// Subject.GradeSubjects read SubjectGradeLink rows, so grade counts were always zero.
 public class SubjectGradeLink : TenantOwnedEntity
 {
     public long GradeId { get; set; }
+    public Grade Grade { get; set; } = null!;
     public long SubjectId { get; set; }
+    public Subject Subject { get; set; } = null!;
     public long AcademicYearId { get; set; }
     public bool IsCompulsory { get; set; } = true;
 }

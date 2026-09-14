@@ -1,9 +1,15 @@
+using TenantMessagingUsage = LearnCloud.Messaging.Entities.TenantMessagingUsage;
+using Plan = LearnCloud.PlatformBilling.Entities.Plan;
+using Subscription = LearnCloud.PlatformBilling.Entities.Subscription;
+using User = LearnCloud.Auth.Entities.User;
 using LearnCloud.MultiTenancy.Context;
+using LearnCloud.MultiTenancy.Entities;
 using LearnCloud.Domain.Entities;
 using LearnCloud.PlatformAdmin.DTOs;
 using LearnCloud.PlatformAdmin.Entities;
 using LearnCloud.PlatformBilling.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace LearnCloud.PlatformAdmin.Services;
 
@@ -115,9 +121,9 @@ public class PlatformAdminService : IPlatformAdminService
 
         var subHistory = history.Select(h => new SubscriptionHistoryDto(h.Id, h.OldValues ?? "", h.NewValues ?? "", h.Action, h.OldValues, h.CreatedAt, h.UserId)).ToList();
         var invoiceDtos = invoices.Select(i => new InvoiceDto(i.Id, i.InvoiceNumber, i.IssueDate, i.DueDate, i.TotalAmount, i.AmountPaid, i.BalanceDue, i.Currency, i.Status, i.Notes)).ToList();
-        var monthlyTrend = await _db.Set<TenantMessagingUsage>().Where(u => u.TenantId == tenantId && !u.IsDeleted).OrderBy(u => u.Year).ThenBy(u => u.Month).Take(12).Select(u => new MonthlyUsageDto(u.Year, u.Month, 0, 0, u.SmsCount, u.SmsCost, u.TotalBytes)).ToListAsync(ct);
+        var monthlyTrend = await _db.Set<TenantMessagingUsage>().Where(u => u.TenantId == tenantId && !u.IsDeleted).OrderBy(u => u.Year).ThenBy(u => u.Month).Take(12).Select(u => new MonthlyUsageDto(u.Year, u.Month, 0, 0, u.SmsCount, u.SmsCost, 0L)).ToListAsync(ct); // storage is not in the messaging usage table; learners, users and storage trend are not yet sourced
 
-        var usage = new UsageDto(usersCount, learnersCount, smsUsage?.SmsCount ?? 0, smsUsage?.SmsCost ?? 0m, smsUsage?.EmailCount ?? 0, storage?.TotalBytes ?? 0, storage != null ? Math.Round(storage.TotalBytes / 1024.0 / 1024.0 / 1024.0, 2) : 0m, monthlyTrend);
+        var usage = new UsageDto(usersCount, learnersCount, smsUsage?.SmsCount ?? 0, smsUsage?.SmsCost ?? 0m, smsUsage?.EmailCount ?? 0, storage?.TotalBytes ?? 0, storage != null ? Math.Round(storage.TotalBytes / 1024m / 1024m / 1024m, 2) : 0m, monthlyTrend);
 
         var healthDto = health != null ? new HealthDto(health.Score, health.HealthStatus, health.CalculatedAt, health.FactorsJson, health.MonthlyValue) : new HealthDto(0, "unknown", DateTime.UtcNow, null, 0m);
 
@@ -500,7 +506,7 @@ public class PlatformAdminService : IPlatformAdminService
 
     public async Task<List<SmsSpendByTenantDto>> GetSmsSpendAsync(int year, int month, CancellationToken ct = default)
     {
-        var usage = await _db.Set<TenantMessagingUsage>().Where(u => u.Year == year && u.Month == month && !u.IsDeleted).Include(u => u.Tenant).ToListAsync(ct);
+        var usage = await _db.Set<TenantMessagingUsage>().Where(u => u.Year == year && u.Month == month && !u.IsDeleted).ToListAsync(ct);
         return usage.Select(u => new SmsSpendByTenantDto(u.TenantId, _db.Tenants.FirstOrDefault(t => t.Id == u.TenantId)?.Name ?? $"Tenant {u.TenantId}", u.Year, u.Month, u.SmsCount, u.SmsCost, u.EmailCount, u.EmailCost, u.Currency, u.SmsCost + u.EmailCost)).OrderByDescending(u => u.TotalCost).ToList();
     }
 
@@ -512,16 +518,15 @@ public class PlatformAdminService : IPlatformAdminService
         {
             var tenantName = (await _db.Tenants.FirstOrDefaultAsync(t => t.Id == r.TenantId, ct))?.Name ?? $"Tenant {r.TenantId}";
             var prev = await _db.Set<StorageGrowthRecord>().Where(s => s.TenantId == r.TenantId && s.MeasuredAt < r.MeasuredAt && !s.IsDeleted).OrderByDescending(s => s.MeasuredAt).FirstOrDefaultAsync(ct);
-            var growth = prev != null ? Math.Round((r.TotalBytes - prev.TotalBytes) / 1024.0 / 1024.0 / 1024.0, 2) : 0m;
-            result.Add(new StorageGrowthDto(r.TenantId, tenantName, r.TotalFiles, r.TotalBytes, Math.Round(r.TotalBytes / 1024.0 / 1024.0 / 1024.0, 2), r.DocumentBytes, r.PhotoBytes, r.MeasuredAt, growth));
+            var growth = prev != null ? Math.Round((r.TotalBytes - prev.TotalBytes) / 1024m / 1024m / 1024m, 2) : 0m;
+            result.Add(new StorageGrowthDto(r.TenantId, tenantName, r.TotalFiles, r.TotalBytes, Math.Round(r.TotalBytes / 1024m / 1024m / 1024m, 2), r.DocumentBytes, r.PhotoBytes, r.MeasuredAt, growth));
         }
         return result.OrderByDescending(r => r.TotalGb).ToList();
     }
 }
 
-// Stub entities for compilation that exist in other modules
-public class Tenant : BaseEntity { public string Name { get; set; } = ""; public string Slug { get; set; } = ""; public string City { get; set; } = ""; public string ContactEmail { get; set; } = ""; public string? ContactPhone { get; set; } public string PrimaryColor { get; set; } = ""; }
-public class User : BaseEntity { public long? TenantId { get; set; } public string DisplayName { get; set; } = ""; }
+// Tenant (MultiTenancy) and User (Auth) are the canonical entities; the stubs that
+// used to sit here would have been mapped as duplicate tables.
 
 // REMOVED DUPLICATE STUBS - Now using canonical entities from LearnCloud.Domain.Entities
 // Fix C2: Final cleanup - single source of truth

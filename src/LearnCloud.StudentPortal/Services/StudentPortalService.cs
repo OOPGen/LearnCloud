@@ -1,3 +1,6 @@
+using LearnCloud.AttendanceTimetable.Entities;
+using LearnCloud.HR.Entities;
+using User = LearnCloud.Auth.Entities.User;
 using LearnCloud.Domain.Entities;
 using LearnCloud.MultiTenancy.Context;
 using LearnCloud.StudentPortal.DTOs;
@@ -32,8 +35,8 @@ public class StudentPortalService : IStudentPortalService
     public async Task<StudentDashboardDto> GetDashboardAsync(long tenantId, long studentId, CancellationToken ct = default)
     {
         var student = await _db.Set<Student>().FirstOrDefaultAsync(s => s.Id == studentId && s.TenantId == tenantId && !s.IsDeleted, ct) ?? throw new InvalidOperationException("Student not found");
-        var grade = await _db.Grades.FirstOrDefaultAsync(g => g.Id == student.GradeId, ct);
-        var stream = await _db.Streams.FirstOrDefaultAsync(s => s.Id == student.StreamId, ct);
+        var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == student.GradeId, ct);
+        var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == student.StreamId, ct);
 
         var timetable = await GetTimetableWeekAsync(tenantId, studentId, ct);
         var attendance = await GetAttendanceSummaryAsync(tenantId, studentId, student.AcademicYearId, 1, ct); // term 1 default, real would use current term
@@ -89,7 +92,7 @@ public class StudentPortalService : IStudentPortalService
             foreach (var slot in daySlots)
             {
                 var subject = await _db.Set<Subject>().FirstOrDefaultAsync(su => su.Id == slot.SubjectId, ct);
-                var teacher = await _db.Set<TeacherPortal.Services.StaffProfile>().FirstOrDefaultAsync(s => s.Id == slot.TeacherStaffId, ct);
+                var teacher = await _db.Set<Staff>().FirstOrDefaultAsync(s => s.Id == slot.TeacherStaffId, ct);
                 var room = slot.RoomId.HasValue ? await _db.Set<Room>().FirstOrDefaultAsync(r => r.Id == slot.RoomId.Value, ct) : null;
                 var period = await _db.Set<PeriodDefinition>().FirstOrDefaultAsync(p => p.TenantId == tenantId && p.PeriodNumber == slot.PeriodNumber, ct);
 
@@ -245,7 +248,7 @@ public class StudentPortalService : IStudentPortalService
         foreach (var b in batches)
         {
             // Simplified: include all for demo, real would check audience_filter_json
-            result.Add(new NoticeDto(b.Id, b.Title, b.Body, b.CreatedAt, "normal", false));
+            result.Add(new NoticeDto(b.Id, b.Title, b.Body, b.CreatedAt, "normal"));
         }
         return result;
     }
@@ -269,8 +272,8 @@ public class StudentPortalService : IStudentPortalService
     public async Task<StudentProfileDto> GetProfileAsync(long tenantId, long studentId, long userId, CancellationToken ct = default)
     {
         var student = await _db.Set<Student>().FirstOrDefaultAsync(s => s.Id == studentId && s.TenantId == tenantId && !s.IsDeleted, ct) ?? throw new InvalidOperationException("Student not found");
-        var grade = await _db.Grades.FirstOrDefaultAsync(g => g.Id == student.GradeId, ct);
-        var stream = await _db.Streams.FirstOrDefaultAsync(s => s.Id == student.StreamId, ct);
+        var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == student.GradeId, ct);
+        var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == student.StreamId, ct);
         var user = await _db.Set<User>().FirstOrDefaultAsync(u => u.Id == userId && !u.IsDeleted, ct);
 
         return new StudentProfileDto(student.Id, userId, student.StudentNumber, student.FirstName, student.LastName, $"{student.FirstName} {student.LastName}", user?.Email, user?.Phone, grade?.Name ?? "", stream?.Name ?? "", student.PhotoUrl, student.Dob, student.Status);
@@ -296,12 +299,5 @@ public class StudentPortalService : IStudentPortalService
     private static string DayName(int day) => day switch { 1 => "Monday", 2 => "Tuesday", 3 => "Wednesday", 4 => "Thursday", 5 => "Friday", 6 => "Saturday", 7 => "Sunday", _ => $"Day {day}" };
 }
 
-// Reuse entities from other modules that would exist in shared DbContext - stubs for compilation
-public class Timetable : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public string Name { get; set; } = ""; public long AcademicYearId { get; set; } public long TermId { get; set; } public DateTime EffectiveFrom { get; set; } public DateTime? EffectiveTo { get; set; } public int Version { get; set; } public string Status { get; set; } = ""; }
-public class TimetableSlot : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public long TimetableId { get; set; } public long GradeId { get; set; } public long StreamId { get; set; } public long SubjectId { get; set; } public long TeacherStaffId { get; set; } public long? RoomId { get; set; } public int DayOfWeek { get; set; } public int PeriodNumber { get; set; } public TimeSpan StartTime { get; set; } public TimeSpan EndTime { get; set; } }
-public class PeriodDefinition : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public int PeriodNumber { get; set; } public string Name { get; set; } = ""; public TimeSpan StartTime { get; set; } public TimeSpan EndTime { get; set; } public bool IsBreak { get; set; } }
-public class AttendanceRecord : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public long StudentId { get; set; } public long AcademicYearId { get; set; } public long TermId { get; set; } public DateTime AttendanceDate { get; set; } public AttendanceStatus Status { get; set; } public string? AbsenceReason { get; set; } public string? Note { get; set; } public int? PeriodNumber { get; set; } }
-public enum AttendanceStatus { Present = 1, Absent = 2, Late = 3, Sick = 4, Excused = 5 }
-public class ReportCard : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public long StudentId { get; set; } public long AcademicYearId { get; set; } public long TermId { get; set; } public decimal TotalAverage { get; set; } public string? OverallGradeLetter { get; set; } public int? ClassRank { get; set; } public DateTime? PublishedAt { get; set; } public string? PdfUrl { get; set; } public string Status { get; set; } = "draft"; }
-public class ReportCardSubject : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public long ReportCardId { get; set; } public long SubjectId { get; set; } public string SubjectName { get; set; } = ""; public decimal? Score { get; set; } public decimal MaxScore { get; set; } public string? GradeLetter { get; set; } }
-public class User : LearnCloud.MultiTenancy.Entities.BaseEntity { public long? TenantId { get; set; } public string Email { get; set; } = ""; public string DisplayName { get; set; } = ""; public string? Phone { get; set; } }
+// Entities from AttendanceTimetable, Auth and Domain were previously stubbed here.
+// They are now referenced from their owning modules.

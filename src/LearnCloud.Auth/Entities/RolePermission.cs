@@ -1,9 +1,11 @@
+using LearnCloud.MultiTenancy.Entities;
+
 namespace LearnCloud.Auth.Entities;
 
 public class Role : BaseEntity
 {
     // Null for system/platform roles
-    public new long? TenantId { get; set; }
+    public long? TenantId { get; set; }
     public string Code { get; set; } = null!; // SCHOOL_ADMIN etc
     public string Name { get; set; } = null!;
     public bool IsSystem { get; set; } = true;
@@ -15,7 +17,7 @@ public class Role : BaseEntity
 
 public class Permission : BaseEntity
 {
-    public new long? TenantId { get; set; } // global perms tenantId null, but column present for uniformity
+    public long? TenantId { get; set; } // global perms tenantId null, but column present for uniformity
     public string Code { get; set; } = null!; // e.g. students.read
     public string Name { get; set; } = null!;
     public string Module { get; set; } = null!;
@@ -24,7 +26,7 @@ public class Permission : BaseEntity
 public class RolePermission : BaseEntity
 {
     // Overrides: RolePermission must be tenant-owned for index leading tenant_id
-    public new long? TenantId { get; set; }
+    public long? TenantId { get; set; }
     public long RoleId { get; set; }
     public Role Role { get; set; } = null!;
     public long PermissionId { get; set; }
@@ -33,7 +35,7 @@ public class RolePermission : BaseEntity
 
 public class UserRole : BaseEntity
 {
-    public new long? TenantId { get; set; }
+    public long? TenantId { get; set; }
     public long UserId { get; set; }
     public User User { get; set; } = null!;
     public long RoleId { get; set; }

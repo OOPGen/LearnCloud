@@ -1,3 +1,4 @@
+using LearnCloud.HR.Entities;
 using LearnCloud.AttendanceTimetable.DTOs;
 using LearnCloud.AttendanceTimetable.Entities;
 using LearnCloud.MultiTenancy.Context;
@@ -201,13 +202,13 @@ public class TimetableService : ITimetableService
         var clashes = new List<ClashDetailDto>();
 
         // Need names for plain language
-        var grade = await _db.Grades.FirstOrDefaultAsync(g=>g.Id==newSlot.GradeId, ct);
-        var stream = await _db.Streams.FirstOrDefaultAsync(s=>s.Id==newSlot.StreamId, ct);
+        var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g=>g.Id==newSlot.GradeId, ct);
+        var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s=>s.Id==newSlot.StreamId, ct);
         var subject = await _db.Set<Subject>().FirstOrDefaultAsync(s=>s.Id==newSlot.SubjectId, ct);
-        var teacher = await _db.Set<StaffProfile>().FirstOrDefaultAsync(s=>s.Id==newSlot.TeacherStaffId, ct);
+        var teacher = await _db.Set<Staff>().FirstOrDefaultAsync(s=>s.Id==newSlot.TeacherStaffId, ct);
         var room = newSlot.RoomId.HasValue ? await _db.Set<Room>().FirstOrDefaultAsync(r=>r.Id==newSlot.RoomId.Value, ct) : null;
 
-        string newInfo = $"{grade?.Name ?? newSlot.GradeId} {stream?.Name ?? newSlot.StreamId} {subject?.Name ?? newSlot.SubjectId} with {teacher?.FirstName ?? ""} {teacher?.LastName ?? newSlot.TeacherStaffId} in {(room?.Name ?? "no room")}";
+        string newInfo = $"{grade?.Name ?? newSlot.GradeId.ToString()} {stream?.Name ?? newSlot.StreamId.ToString()} {subject?.Name ?? newSlot.SubjectId.ToString()} with {teacher?.FirstName ?? ""} {teacher?.LastName ?? newSlot.TeacherStaffId.ToString()} in {(room?.Name ?? "no room")}";
 
         foreach(var existing in existingSlots)
         {
@@ -216,10 +217,10 @@ public class TimetableService : ITimetableService
             // Teacher clash
             if (existing.TeacherStaffId == newSlot.TeacherStaffId)
             {
-                var exGrade = await _db.Grades.FirstOrDefaultAsync(g=>g.Id==existing.GradeId, ct);
-                var exStream = await _db.Streams.FirstOrDefaultAsync(s=>s.Id==existing.StreamId, ct);
+                var exGrade = await _db.Set<Grade>().FirstOrDefaultAsync(g=>g.Id==existing.GradeId, ct);
+                var exStream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s=>s.Id==existing.StreamId, ct);
                 var exSubject = await _db.Set<Subject>().FirstOrDefaultAsync(s=>s.Id==existing.SubjectId, ct);
-                var exTeacher = await _db.Set<StaffProfile>().FirstOrDefaultAsync(s=>s.Id==existing.TeacherStaffId, ct);
+                var exTeacher = await _db.Set<Staff>().FirstOrDefaultAsync(s=>s.Id==existing.TeacherStaffId, ct);
                 var exRoom = existing.RoomId.HasValue ? await _db.Set<Room>().FirstOrDefaultAsync(r=>r.Id==existing.RoomId.Value, ct) : null;
                 string exInfo = $"{exGrade?.Name} {exStream?.Name} {exSubject?.Name} with {exTeacher?.FirstName} {exTeacher?.LastName} in {(exRoom?.Name ?? "no room")}";
 
@@ -247,7 +248,7 @@ public class TimetableService : ITimetableService
             if (existing.GradeId == newSlot.GradeId && existing.StreamId == newSlot.StreamId)
             {
                 var exSubject = await _db.Set<Subject>().FirstOrDefaultAsync(s=>s.Id==existing.SubjectId, ct);
-                var exTeacher = await _db.Set<StaffProfile>().FirstOrDefaultAsync(s=>s.Id==existing.TeacherStaffId, ct);
+                var exTeacher = await _db.Set<Staff>().FirstOrDefaultAsync(s=>s.Id==existing.TeacherStaffId, ct);
                 string exInfo = $"{grade?.Name} {stream?.Name} already has {exSubject?.Name} with {exTeacher?.FirstName} at {DayName(existing.DayOfWeek)} Period {existing.PeriodNumber}. Class double-booked.";
 
                 clashes.Add(new ClashDetailDto(
@@ -273,8 +274,8 @@ public class TimetableService : ITimetableService
             // Room conflict if rooms used
             if (newSlot.RoomId.HasValue && existing.RoomId.HasValue && existing.RoomId.Value == newSlot.RoomId.Value)
             {
-                var exGrade = await _db.Grades.FirstOrDefaultAsync(g=>g.Id==existing.GradeId, ct);
-                var exStream = await _db.Streams.FirstOrDefaultAsync(s=>s.Id==existing.StreamId, ct);
+                var exGrade = await _db.Set<Grade>().FirstOrDefaultAsync(g=>g.Id==existing.GradeId, ct);
+                var exStream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s=>s.Id==existing.StreamId, ct);
                 clashes.Add(new ClashDetailDto(
                     "Room",
                     $"Room {room?.Name} is already booked by {exGrade?.Name} {exStream?.Name} at {DayName(existing.DayOfWeek)} Period {existing.PeriodNumber}. Room conflict — two classes cannot use the same room at the same time.",
@@ -432,10 +433,10 @@ public class TimetableService : ITimetableService
 
     private async Task<TimetableSlotDto> MapSlotToDto(TimetableSlot slot, CancellationToken ct)
     {
-        var grade = await _db.Grades.FirstOrDefaultAsync(g=>g.Id==slot.GradeId, ct);
-        var stream = await _db.Streams.FirstOrDefaultAsync(s=>s.Id==slot.StreamId, ct);
+        var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g=>g.Id==slot.GradeId, ct);
+        var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s=>s.Id==slot.StreamId, ct);
         var subject = await _db.Set<Subject>().FirstOrDefaultAsync(s=>s.Id==slot.SubjectId, ct);
-        var teacher = await _db.Set<StaffProfile>().FirstOrDefaultAsync(s=>s.Id==slot.TeacherStaffId, ct);
+        var teacher = await _db.Set<Staff>().FirstOrDefaultAsync(s=>s.Id==slot.TeacherStaffId, ct);
         var room = slot.RoomId.HasValue ? await _db.Set<Room>().FirstOrDefaultAsync(r=>r.Id==slot.RoomId.Value, ct) : null;
         var period = await _db.Set<PeriodDefinition>().FirstOrDefaultAsync(p=>p.TenantId==slot.TenantId && p.PeriodNumber==slot.PeriodNumber, ct);
 

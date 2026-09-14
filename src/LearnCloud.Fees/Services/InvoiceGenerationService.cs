@@ -20,10 +20,12 @@ public class InvoiceGenerationService : IInvoiceGenerationService
     private readonly LearnCloudDbContext _db;
     private readonly FeeCalculationService _calc;
     private readonly ITenantContext _tenantContext;
+    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly ILogger<InvoiceGenerationService> _logger;
 
-    public InvoiceGenerationService(LearnCloudDbContext db, FeeCalculationService calc, ITenantContext tenantContext)
+    public InvoiceGenerationService(LearnCloudDbContext db, FeeCalculationService calc, ITenantContext tenantContext, IServiceScopeFactory scopeFactory, ILogger<InvoiceGenerationService> logger)
     {
-        _db = db; _calc = calc; _tenantContext = tenantContext;
+        _db = db; _calc = calc; _tenantContext = tenantContext; _scopeFactory = scopeFactory; _logger = logger;
     }
 
     public async Task<FeeInvoiceBatch> StartGenerationAsync(long tenantId, long userId, long academicYearId, long termId, CancellationToken ct = default)
@@ -44,19 +46,25 @@ public class InvoiceGenerationService : IInvoiceGenerationService
 
         // In real app, enqueue background job via Hangfire/Quartz: BackgroundJob.Enqueue(() => GenerateForTermAsync(...))
         // For V1, run synchronously but in background task
+        // This runs after the request returns, so it gets its own DI scope: the request's
+        // DbContext is disposed by then. It must not take the request's cancellation token
+        // either, or the batch would be cancelled as soon as the response is sent.
+        // Not durable: a restart mid-run leaves the batch in its current status.
+        var batchId = batch.Id;
         _ = Task.Run(async () =>
         {
             try
             {
-                using var scope = _tenantContext.BeginTenantScope(tenantId);
-                await GenerateForTermAsync(tenantId, userId, academicYearId, termId, batch.Id, CancellationToken.None);
+                await using var scope = _scopeFactory.CreateAsyncScope();
+                using var tenantScope = scope.ServiceProvider.GetRequiredService<ITenantContext>().BeginTenantScope(tenantId);
+                var generator = scope.ServiceProvider.GetRequiredService<IInvoiceGenerationService>();
+                await generator.GenerateForTermAsync(tenantId, userId, academicYearId, termId, batchId, CancellationToken.None);
             }
             catch (Exception ex)
             {
-                // Log
-                // C6 FIX: Removed // C6 FIXED: Removed Console.WriteLine, should use ILogger - invoice generation failed logged via batch status
+                _logger.LogError(ex, "Invoice generation batch {BatchId} for tenant {TenantId} failed", batchId, tenantId);
             }
-        }, ct);
+        });
 
         return batch;
     }

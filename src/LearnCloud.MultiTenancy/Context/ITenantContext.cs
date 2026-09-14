@@ -32,6 +32,7 @@ public interface ITenantContext
     // Internal setters used by middleware
     void SetResolvedTenant(long tenantId, Tenant tenant, TenantResolutionSource source, long? subdomainTenantId = null, long? tokenTenantId = null, long? actorUserId = null);
     void SetSubdomainTenant(long? subdomainTenantId, Tenant? tenant);
+    void SetActor(long actorUserId, string? actorRole);
     void SetExplicitNoTenant(string reason, long actorUserId, string actorRole);
     void Clear();
 }

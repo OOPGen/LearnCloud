@@ -39,6 +39,7 @@ public class MessageBatch : TenantOwnedEntity
     public int SentCount { get; set; }
     public int DeliveredCount { get; set; }
     public int FailedCount { get; set; }
+    public int ProgressPercent { get; set; } // 0-100, written by MessagingBackgroundJob
 
     public decimal EstimatedCost { get; set; } // DECIMAL(18,2)
     public decimal ActualCost { get; set; }

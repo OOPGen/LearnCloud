@@ -75,8 +75,8 @@ public class AttendanceService : IAttendanceService
     public async Task<RegisterResponseDto> GetRegisterAsync(long tenantId, GetRegisterRequest req, CancellationToken ct = default)
     {
         // Get grade/stream names
-        var grade = await _db.Grades.FirstOrDefaultAsync(g => g.Id == req.GradeId && g.TenantId == tenantId, ct) ?? throw new InvalidOperationException("Grade not found");
-        var stream = await _db.Streams.FirstOrDefaultAsync(s => s.Id == req.StreamId && s.TenantId == tenantId, ct) ?? throw new InvalidOperationException("Stream not found");
+        var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == req.GradeId && g.TenantId == tenantId, ct) ?? throw new InvalidOperationException("Grade not found");
+        var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == req.StreamId && s.TenantId == tenantId, ct) ?? throw new InvalidOperationException("Stream not found");
 
         // Get students for class (current enrolment is_current true)
         var students = await _db.Set<Student>().Where(s => s.TenantId == tenantId && !s.IsDeleted)
@@ -152,11 +152,15 @@ public class AttendanceService : IAttendanceService
             }
         }
 
-        using var tx = await _db.Database.BeginTransactionAsync(ct);
-        try
+        // One unit of work under the retrying execution strategy (see InTransactionAsync).
+        return await _db.InTransactionAsync(async () =>
         {
+            // Re-read inside the unit so a retry works from fresh, tracked state.
+            var currentRegister = existingRegister is null ? null
+                : await _db.Set<AttendanceRegister>().FirstOrDefaultAsync(r => r.Id == existingRegister.Id && r.TenantId == tenantId, ct);
+
             AttendanceRegister register;
-            if (existingRegister == null)
+            if (currentRegister == null)
             {
                 register = new AttendanceRegister
                 {
@@ -178,7 +182,7 @@ public class AttendanceService : IAttendanceService
             }
             else
             {
-                register = existingRegister;
+                register = currentRegister;
                 register.Status = "submitted";
                 register.SubmittedAt = DateTime.UtcNow;
                 register.SubmittedByUserId = userId;
@@ -237,15 +241,8 @@ public class AttendanceService : IAttendanceService
                 await _db.SaveChangesAsync(ct);
             }
 
-            await tx.CommitAsync(ct);
-
             return new MarkRegisterResponse(register.Id, req.Items.Count, req.Items.Count, isBackdated, DateTime.UtcNow, isBackdated ? $"Saved with backdate flag ({daysDiff} days ago)" : "Saved");
-        }
-        catch
-        {
-            await tx.RollbackAsync(ct);
-            throw;
-        }
+        }, ct);
     }
 
     public decimal CalculatePercentage(int present, int late, int excused, int sick, int absent, int total, TenantAttendanceSettings settings)
@@ -291,8 +288,8 @@ public class AttendanceService : IAttendanceService
             var total = g.Count();
             var perc = CalculatePercentage(present, late, excused, sick, absent, total, settings);
             var isChronic = perc < settings.ChronicAbsenceThreshold;
-            var grade = await _db.Grades.FirstOrDefaultAsync(gr => gr.Id == g.First().GradeId, ct);
-            var stream = await _db.Streams.FirstOrDefaultAsync(st => st.Id == g.First().StreamId, ct);
+            var grade = await _db.Set<Grade>().FirstOrDefaultAsync(gr => gr.Id == g.First().GradeId, ct);
+            var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(st => st.Id == g.First().StreamId, ct);
 
             learners.Add(new AttendanceSummaryPerLearnerDto(
                 studentId,
@@ -314,8 +311,8 @@ public class AttendanceService : IAttendanceService
             ));
         }
 
-        var gradeInfo = req.GradeId.HasValue ? await _db.Grades.FirstOrDefaultAsync(g => g.Id == req.GradeId.Value, ct) : null;
-        var streamInfo = req.StreamId.HasValue ? await _db.Streams.FirstOrDefaultAsync(s => s.Id == req.StreamId.Value, ct) : null;
+        var gradeInfo = req.GradeId.HasValue ? await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == req.GradeId.Value, ct) : null;
+        var streamInfo = req.StreamId.HasValue ? await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == req.StreamId.Value, ct) : null;
 
         var avg = learners.Any() ? Math.Round(learners.Average(l => l.Percentage), 2) : 0m;
         var chronicCount = learners.Count(l => l.IsChronicAbsence);
@@ -337,8 +334,8 @@ public class AttendanceService : IAttendanceService
 
     public async Task<PrintableMonthRegisterDto> GetPrintableMonthAsync(long tenantId, PrintableMonthRegisterRequest req, CancellationToken ct = default)
     {
-        var grade = await _db.Grades.FirstOrDefaultAsync(g => g.Id == req.GradeId && g.TenantId == tenantId, ct) ?? throw new InvalidOperationException("Grade not found");
-        var stream = await _db.Streams.FirstOrDefaultAsync(s => s.Id == req.StreamId && s.TenantId == tenantId, ct) ?? throw new InvalidOperationException("Stream not found");
+        var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == req.GradeId && g.TenantId == tenantId, ct) ?? throw new InvalidOperationException("Grade not found");
+        var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == req.StreamId && s.TenantId == tenantId, ct) ?? throw new InvalidOperationException("Stream not found");
 
         var students = await _db.Set<Student>().Where(s => s.TenantId == tenantId && s.GradeId == req.GradeId && s.StreamId == req.StreamId && !s.IsDeleted)
             .Join(_db.Set<StudentEnrolment>().Where(e => e.TenantId == tenantId && e.GradeId == req.GradeId && e.StreamId == req.StreamId && e.AcademicYearId == req.AcademicYearId && e.IsCurrent && !e.IsDeleted),

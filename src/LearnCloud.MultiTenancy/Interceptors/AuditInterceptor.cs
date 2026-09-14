@@ -1,6 +1,7 @@
 using System.Text.Json;
 using LearnCloud.MultiTenancy.Context;
 using LearnCloud.MultiTenancy.Entities;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 
@@ -18,17 +19,27 @@ public class AuditInterceptor
         _httpContextAccessor = httpContextAccessor;
     }
 
+    // Values that must never be copied into the audit log.
+    private static readonly string[] SensitiveNameParts = { "Password", "TokenHash", "SecurityStamp", "Secret", "ApiKey" };
+    private static bool IsSensitive(string propertyName) =>
+        SensitiveNameParts.Any(part => propertyName.Contains(part, StringComparison.OrdinalIgnoreCase));
+
     public void CaptureAuditEntries(DbContext context)
     {
         _pendingAudits.Clear();
+        // AuditLog rows are excluded: WriteAuditsAsync saves them through the same
+        // SaveChanges, and auditing them recursed without end, re-escaping the JSON each
+        // level until serialization failed (every registration returned 500).
         var entries = context.ChangeTracker.Entries<BaseEntity>()
-            .Where(e => e.State == EntityState.Added || e.State == EntityState.Modified || (e.State == EntityState.Deleted) || (e.State == EntityState.Modified && e.Entity.IsDeleted))
+            .Where(e => e.Entity is not AuditLog)
+            .Where(e => e.State == EntityState.Added || e.State == EntityState.Modified || e.State == EntityState.Deleted)
             .ToList();
 
         foreach (var entry in entries)
         {
             var audit = new AuditEntry
             {
+                Entity = entry.Entity,
                 EntityType = entry.Entity.GetType().Name,
                 EntityId = entry.Entity.Id, // may be 0 for Added, will be updated after SaveChanges, we handle temporary
                 Action = entry.State switch
@@ -59,6 +70,7 @@ public class AuditInterceptor
                     if (prop.IsTemporary) continue;
                     var propName = prop.Metadata.Name;
                     if (propName == nameof(BaseEntity.CreatedAt) || propName == nameof(BaseEntity.UpdatedAt) || propName == nameof(BaseEntity.CreatedBy) || propName == nameof(BaseEntity.UpdatedBy)) continue;
+                    if (IsSensitive(propName)) continue;
 
                     var original = prop.OriginalValue;
                     var current = prop.CurrentValue;
@@ -81,7 +93,7 @@ public class AuditInterceptor
                 var newDict = new Dictionary<string, object?>();
                 foreach (var prop in entry.Properties)
                 {
-                    if (prop.CurrentValue != null)
+                    if (prop.CurrentValue != null && !prop.IsTemporary && !IsSensitive(prop.Metadata.Name))
                         newDict[prop.Metadata.Name] = prop.CurrentValue;
                 }
                 audit.NewValues = JsonSerializer.Serialize(newDict);
@@ -105,7 +117,8 @@ public class AuditInterceptor
                 TenantId = audit.TenantId,
                 UserId = audit.UserId,
                 EntityType = audit.EntityType,
-                EntityId = audit.EntityId, // may still be 0 for added, we will patch
+                // Read after the save, so rows created in this save carry their real id.
+                EntityId = audit.Entity.Id,
                 Action = audit.Action,
                 OldValues = audit.OldValues,
                 NewValues = audit.NewValues,
@@ -139,6 +152,7 @@ public class AuditInterceptor
 
     private class AuditEntry
     {
+        public BaseEntity Entity { get; set; } = null!;
         public string EntityType { get; set; } = null!;
         public long EntityId { get; set; }
         public string Action { get; set; } = null!;

@@ -108,19 +108,12 @@ public class OnlinePaymentsController : ControllerBase
             else tenantId = 1; // fallback for test
         }
 
-        try
+        var tx = await _paymentService.HandleWebhookAsync(tenantId, gatewayName, payload, signature, headers, ct);
+        if (tx.Status == "failed" && !tx.IsSignatureVerified)
         {
-            var tx = await _paymentService.HandleWebhookAsync(tenantId, gatewayName, payload, signature, headers, ct);
-            if (tx.Status == "failed" && !tx.IsSignatureVerified)
-            {
-                return Unauthorized(new { message = "Invalid signature - hostile webhook rejected", reason = tx.FailureReason });
-            }
-            return Ok(new { message = "Webhook processed", transactionId = tx.Id, status = tx.Status, isReplay = tx.IsReplay, isOutOfOrder = tx.IsOutOfOrder });
+            return Unauthorized(new { message = "Invalid signature - hostile webhook rejected", reason = tx.FailureReason });
         }
-        catch (Exception ex)
-        {
-            return BadRequest(new { message = "An error occurred processing your request", requestId = HttpContext.TraceIdentifier, code = "BAD_REQUEST" }); // C7/C8 FIX: Was ex.Message exposing internal details
-        }
+        return Ok(new { message = "Webhook processed", transactionId = tx.Id, status = tx.Status, isReplay = tx.IsReplay, isOutOfOrder = tx.IsOutOfOrder });
     }
 
     // Reconciliation screen showing gateway transactions against recorded payments, unmatched highlighted and manual match action

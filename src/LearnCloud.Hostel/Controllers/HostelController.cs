@@ -202,7 +202,7 @@ public class HostelController : ControllerBase
             Relationship = req.Relationship,
             IdNumber = req.IdNumber,
             Phone = req.Phone,
-            CheckInDateTime = req.CheckInDateTime,
+            CheckInDateTime = DateTime.UtcNow, // recorded by the server at check-in, not client-supplied
             Purpose = req.Purpose,
             AuthorisedByUserId = UserId,
             Status = "checked_in",

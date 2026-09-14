@@ -1,3 +1,5 @@
+using LearnCloud.Fees.Entities;
+using LearnCloud.MultiTenancy.Entities;
 using LearnCloud.Finance.DTOs;
 using LearnCloud.Finance.Entities;
 using LearnCloud.Finance.Services;
@@ -170,7 +172,7 @@ public class FinanceController : ControllerBase
         var expense = await _db.Set<Expense>().FirstOrDefaultAsync(e => e.Id == id && e.TenantId == TenantId && !e.IsDeleted, ct);
         if (expense == null) return NotFound();
 
-        var pending = await _db.Set<ApprovalRequest>().Where(a => a.TenantId == TenantId && a.ExpenseId == id && a.Status == "pending" && !a.IsDeleted) // SECURITY C5.OrderBy(a => a.ApprovalOrder).FirstOrDefaultAsync(ct);
+        var pending = await _db.Set<ApprovalRequest>().Where(a => a.TenantId == TenantId && a.ExpenseId == id && a.Status == "pending" && !a.IsDeleted).OrderBy(a => a.ApprovalOrder).FirstOrDefaultAsync(ct);
         if (pending == null) return BadRequest(new { message = "No pending approval" });
 
         // Check approver role
@@ -331,7 +333,7 @@ public class FinanceController : ControllerBase
 
         var balance = _calc.CalculateCashBookBalance(account.CurrentBalance, new List<(decimal, decimal)> { (req.Debit, req.Credit) });
         // Actually need running balance from last entry
-        var lastEntry = await _db.Set<CashBookEntry>().Where(c => c.TenantId == TenantId && c.BankAccountId == req.BankAccountId && !c.IsDeleted) // SECURITY C5.OrderByDescending(c => c.EntryDate).ThenByDescending(c => c.Id).FirstOrDefaultAsync(ct);
+        var lastEntry = await _db.Set<CashBookEntry>().Where(c => c.TenantId == TenantId && c.BankAccountId == req.BankAccountId && !c.IsDeleted).OrderByDescending(c => c.EntryDate).ThenByDescending(c => c.Id).FirstOrDefaultAsync(ct);
         var opening = lastEntry?.Balance ?? account.OpeningBalance;
         var newBalance = _calc.CalculateCashBookBalance(opening, new List<(decimal, decimal)> { (req.Debit, req.Credit) });
 
@@ -365,7 +367,7 @@ public class FinanceController : ControllerBase
             var toAccount = await _db.Set<BankAccount>().FirstOrDefaultAsync(b => b.Id == req.TransferToAccountId.Value && b.TenantId == TenantId, ct);
             if (toAccount != null)
             {
-                var toLast = await _db.Set<CashBookEntry>().Where(c => c.TenantId == TenantId && c.BankAccountId == toAccount.Id && !c.IsDeleted) // SECURITY C5.OrderByDescending(c => c.EntryDate).ThenByDescending(c => c.Id).FirstOrDefaultAsync(ct);
+                var toLast = await _db.Set<CashBookEntry>().Where(c => c.TenantId == TenantId && c.BankAccountId == toAccount.Id && !c.IsDeleted).OrderByDescending(c => c.EntryDate).ThenByDescending(c => c.Id).FirstOrDefaultAsync(ct);
                 var toOpening = toLast?.Balance ?? toAccount.OpeningBalance;
                 var toBalance = _calc.CalculateCashBookBalance(toOpening, new List<(decimal, decimal)> { (0, req.Debit) }); // transfer debit from source = credit to dest? Simplified
                 var toEntry = new CashBookEntry
@@ -504,8 +506,8 @@ public class FinanceController : ControllerBase
         {
             var student = await _db.Set<Student>().FirstOrDefaultAsync(s => s.Id == inv.StudentId, ct);
             if (student == null) continue;
-            var grade = await _db.Grades.FirstOrDefaultAsync(g => g.Id == student.GradeId, ct);
-            var stream = await _db.Streams.FirstOrDefaultAsync(s => s.Id == student.StreamId, ct);
+            var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == student.GradeId, ct);
+            var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == student.StreamId, ct);
             students.Add(new ArrearsStudentDto(inv.StudentId, $"{student.FirstName} {student.LastName}", student.StudentNumber, grade?.Name ?? "", stream?.Name ?? "", inv.BalanceDue, (date - inv.DueDate).Days, inv.Currency));
         }
 

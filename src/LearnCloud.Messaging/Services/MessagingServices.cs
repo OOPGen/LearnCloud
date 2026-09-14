@@ -1,3 +1,5 @@
+using LearnCloud.Fees.Entities;
+using LearnCloud.AttendanceTimetable.Entities;
 using System.Text.RegularExpressions;
 using LearnCloud.Messaging.DTOs;
 using LearnCloud.Messaging.Entities;
@@ -279,8 +281,8 @@ public class AudienceResolver
             case AudienceType.Stream:
                 {
                     if (!req.GradeId.HasValue || !req.StreamId.HasValue) throw new InvalidOperationException("GradeId and StreamId required for class/stream audience");
-                    var grade = await _db.Grades.FirstOrDefaultAsync(g => g.Id == req.GradeId.Value, ct);
-                    var stream = await _db.Streams.FirstOrDefaultAsync(s => s.Id == req.StreamId.Value, ct);
+                    var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == req.GradeId.Value, ct);
+                    var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == req.StreamId.Value, ct);
 
                     var enrolments = await _db.Set<StudentEnrolment>().Where(e => e.TenantId == tenantId && e.GradeId == req.GradeId.Value && e.StreamId == req.StreamId.Value && e.IsCurrent && !e.IsDeleted).ToListAsync(ct);
                     foreach (var enrol in enrolments)

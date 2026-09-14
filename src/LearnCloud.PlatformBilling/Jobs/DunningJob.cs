@@ -200,7 +200,7 @@ public class DunningJob
 
     private async Task SendDunningEvent(Subscription sub, string eventType, string body, CancellationToken ct, long? invoiceId = null)
     {
-        var tenant = await _db.Set<Tenant>().FirstOrDefaultAsync(t=>t.Id==sub.TenantId, ct);
+        var tenant = await _db.Set<LearnCloud.MultiTenancy.Entities.Tenant>().FirstOrDefaultAsync(t=>t.Id==sub.TenantId, ct);
         var recipient = tenant?.ContactEmail ?? "admin@school.co.zw";
 
         var dunning = new DunningEvent

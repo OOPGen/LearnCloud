@@ -2,10 +2,22 @@ using System.Linq.Expressions;
 using System.Reflection;
 using LearnCloud.MultiTenancy.Entities;
 using LearnCloud.MultiTenancy.Interceptors;
+using LearnCloud.MultiTenancy.Security;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace LearnCloud.MultiTenancy.Context;
 
+// The one database context for the whole platform. Every module's entities are part
+// of this model (see LearnCloudModel), so a service in any module can query any
+// entity through Set<T>().
+//
+// Tenant isolation: every ITenantEntity gets a global query filter that reads
+// CurrentTenantId from *this* context instance. EF Core re-evaluates members of the
+// current context on every query, so one cached model serves all tenants safely.
+// The previous design compiled a separate model per tenant, which does not scale
+// and was not needed for correctness.
 public class LearnCloudDbContext : DbContext
 {
     private readonly ITenantContext _tenantContext;
@@ -17,185 +29,162 @@ public class LearnCloudDbContext : DbContext
         _auditInterceptor = auditInterceptor;
     }
 
-    // Exposed for IModelCacheKeyFactory - SECURITY C5
-    public long? TenantIdForCache => _tenantContext.TenantId;
-    public bool IsExplicitNoTenantForCache => _tenantContext.IsExplicitNoTenant;
-
-    // DbSets - Tenant and Platform ONLY (C2 CLEANUP: domain entities moved to Domain/Fees/etc modules)
+    // Platform-level tables owned by this module. Everything else: Set<T>().
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<TenantDomain> TenantDomains => Set<TenantDomain>();
-    public DbSet<Plan> Plans => Set<Plan>();
-    public DbSet<Subscription> Subscriptions => Set<Subscription>();
     public DbSet<TenantSettings> TenantSettings => Set<TenantSettings>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
-    private long? CurrentTenantId
-    {
-        get
-        {
-            // SECURITY C5: If explicit no-tenant, verify role already checked in TenantContext, but also audit here
-            if (_tenantContext.IsExplicitNoTenant)
-            {
-                // Additional guard: ensure actor has privileged role
-                var role = _tenantContext.ActorRole;
-                if (role != "PLATFORM_SUPERADMIN" && role != "PLATFORM_SUPPORT" && role != "SYSTEM")
-                {
-                    throw new UnauthorizedAccessException($"SECURITY: IsExplicitNoTenant bypass attempted without privileged role. Actor { _tenantContext.ActorUserId} role {role} reason {_tenantContext.ResolutionReason}");
-                }
-                // Log audit for explicit no-tenant access - every query bypassing filter must be audited
-            }
-            return _tenantContext.TenantId;
-        }
-    }
+    // Read by the query filters on every query.
+    private long? CurrentTenantId => _tenantContext.TenantId;
+
     private bool IsExplicitNoTenant
     {
         get
         {
-            if (_tenantContext.IsExplicitNoTenant)
-            {
-                // SECURITY: Double-check privileged role
-                var role = _tenantContext.ActorRole;
-                var allowed = new[] { "PLATFORM_SUPERADMIN", "PLATFORM_SUPPORT", "SYSTEM" };
-                if (!allowed.Contains(role))
-                    throw new UnauthorizedAccessException($"SECURITY: Explicit no-tenant filter bypass requires privileged role {string.Join(",", allowed)}, got {role}");
-            }
-            return _tenantContext.IsExplicitNoTenant;
+            if (!_tenantContext.IsExplicitNoTenant) return false;
+            if (!PrivilegedRoles.CanUseNoTenantScope(_tenantContext.ActorRole))
+                throw new UnauthorizedAccessException(
+                    $"SECURITY: tenant filter bypass requires one of {string.Join(",", PrivilegedRoles.All)}, got {_tenantContext.ActorRole}. Actor {_tenantContext.ActorUserId} reason {_tenantContext.ResolutionReason}");
+            return true;
         }
+    }
+
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder.Properties<decimal>().HavePrecision(18, 2);
+        configurationBuilder.Properties<DateTime>().HaveConversion<UtcDateTimeConverter>();
+        configurationBuilder.Properties<DateTime?>().HaveConversion<NullableUtcDateTimeConverter>();
     }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
-        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        foreach (var assembly in LearnCloudModel.Assemblies)
         {
-            var clrType = entityType.ClrType;
-            if (typeof(ITenantEntity).IsAssignableFrom(clrType) && typeof(BaseEntity).IsAssignableFrom(clrType))
-            {
-                var method = typeof(LearnCloudDbContext).GetMethod(nameof(GetTenantFilter), BindingFlags.NonPublic | BindingFlags.Instance)!
-                    .MakeGenericMethod(clrType);
-                var filter = method.Invoke(this, null);
-                modelBuilder.Entity(clrType).HasQueryFilter((LambdaExpression)filter!);
-            }
-            else if (typeof(BaseEntity).IsAssignableFrom(clrType) && clrType != typeof(Tenant) && clrType != typeof(Plan) && clrType != typeof(AuditLog))
-            {
-                var method = typeof(LearnCloudDbContext).GetMethod(nameof(GetSoftDeleteFilter), BindingFlags.NonPublic | BindingFlags.Instance)!
-                    .MakeGenericMethod(clrType);
-                var filter = method.Invoke(this, null);
-                modelBuilder.Entity(clrType).HasQueryFilter((LambdaExpression)filter!);
-            }
+            foreach (var type in LearnCloudModel.EntityTypes(assembly))
+                modelBuilder.Entity(type);
+            modelBuilder.ApplyConfigurationsFromAssembly(assembly, t => t.Namespace?.Split('.').Contains("Tests") != true);
         }
 
-        // Unique constraints
-        modelBuilder.Entity<Tenant>().HasIndex(t => t.Slug).IsUnique();
-        modelBuilder.Entity<TenantDomain>().HasIndex(d => d.Domain).IsUnique();
-        modelBuilder.Entity<TenantDomain>().HasIndex(d => new { d.TenantId, d.Domain }).IsUnique();
-        modelBuilder.Entity<AuditLog>().HasIndex(a => new { a.TenantId, a.EntityType, a.EntityId });
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes().ToList())
+        {
+            if (entityType.BaseType is not null || entityType.IsOwned()) continue;
+            var clrType = entityType.ClrType;
+
+            // Plural table names unless a configuration chose one explicitly (e.g. "users").
+            // The snake_case convention sets a name on every entity as it is added, so the
+            // check must look at how the name was configured, not whether one exists.
+            if (((IConventionEntityType)entityType).GetTableNameConfigurationSource() != ConfigurationSource.Explicit)
+                entityType.SetTableName(LearnCloudModel.PluralTableName(clrType.Name));
+
+            if (typeof(ITenantEntity).IsAssignableFrom(clrType) && typeof(BaseEntity).IsAssignableFrom(clrType))
+                entityType.SetQueryFilter(BuildFilter(nameof(TenantFilter), clrType));
+            else if (typeof(BaseEntity).IsAssignableFrom(clrType) && clrType != typeof(Tenant) && clrType != typeof(AuditLog))
+                entityType.SetQueryFilter(BuildFilter(nameof(SoftDeleteFilter), clrType));
+        }
     }
 
-    private LambdaExpression GetTenantFilter<TEntity>() where TEntity : TenantOwnedEntity
+    private LambdaExpression BuildFilter(string method, Type clrType) =>
+        (LambdaExpression)typeof(LearnCloudDbContext)
+            .GetMethod(method, BindingFlags.NonPublic | BindingFlags.Instance)!
+            .MakeGenericMethod(clrType)
+            .Invoke(this, null)!;
+
+    private LambdaExpression TenantFilter<TEntity>() where TEntity : BaseEntity, ITenantEntity
     {
-        // SECURITY C5: This filter uses IsExplicitNoTenant which now has role guard, plus TenantId
-        // With TenantModelCacheKeyFactory, each tenant gets separate model cache, preventing poisoning
         Expression<Func<TEntity, bool>> filter = e => !e.IsDeleted && (IsExplicitNoTenant || e.TenantId == CurrentTenantId);
         return filter;
     }
 
-    private LambdaExpression GetSoftDeleteFilter<TEntity>() where TEntity : BaseEntity
+    private LambdaExpression SoftDeleteFilter<TEntity>() where TEntity : BaseEntity
     {
         Expression<Func<TEntity, bool>> filter = e => !e.IsDeleted;
         return filter;
     }
 
-    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
-        var entries = ChangeTracker.Entries<BaseEntity>().Where(e => e.State == EntityState.Added || e.State == EntityState.Modified).ToList();
+        // The synchronous path used to bypass tenant stamping and audit entirely.
+        ApplyTenantRulesAndAuditStamps();
+        _auditInterceptor.CaptureAuditEntries(this);
+        var result = base.SaveChanges(acceptAllChangesOnSuccess);
+        _auditInterceptor.WriteAuditsAsync(this).GetAwaiter().GetResult();
+        return result;
+    }
+
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        ApplyTenantRulesAndAuditStamps();
+        _auditInterceptor.CaptureAuditEntries(this);
+        var result = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        await _auditInterceptor.WriteAuditsAsync(this, cancellationToken);
+        return result;
+    }
+
+    private void ApplyTenantRulesAndAuditStamps()
+    {
+        var now = DateTime.UtcNow;
+        var actor = _tenantContext.ActorUserId;
+
+        // Deleted must be included: before, only Added/Modified entries were examined,
+        // so the soft-delete branch never ran and every Remove() was a hard DELETE.
+        var entries = ChangeTracker.Entries<BaseEntity>()
+            .Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
+            .ToList();
 
         foreach (var entry in entries)
         {
-            if (entry.Entity is ITenantEntity tenantEntity)
-            {
-                if (entry.State == EntityState.Added)
-                {
-                    if (tenantEntity.TenantId == 0)
-                    {
-                        if (_tenantContext.TenantId == null && !_tenantContext.IsExplicitNoTenant)
-                        {
-                            throw new InvalidOperationException($"Cannot save ITenantEntity {entry.Entity.GetType().Name} without TenantId - no tenant context resolved.");
-                        }
-                        if (_tenantContext.TenantId.HasValue)
-                        {
-                            tenantEntity.TenantId = _tenantContext.TenantId.Value;
-                        }
-                        else if (_tenantContext.IsExplicitNoTenant)
-                        {
-                            // SECURITY: Explicit no-tenant save must have TenantId explicitly set by caller and privileged role already checked
-                            if (tenantEntity.TenantId == 0)
-                                throw new InvalidOperationException($"Explicit no-tenant save requires explicit TenantId set for {entry.Entity.GetType().Name}, but got 0. Actor {_tenantContext.ActorUserId} role {_tenantContext.ActorRole}");
-                        }
-                    }
-                    else
-                    {
-                        if (_tenantContext.TenantId.HasValue && tenantEntity.TenantId != _tenantContext.TenantId.Value && !_tenantContext.IsExplicitNoTenant)
-                        {
-                            throw new InvalidOperationException($"TenantId mismatch: entity {entry.Entity.GetType().Name} has TenantId {tenantEntity.TenantId} but context TenantId {_tenantContext.TenantId}. Possible cross-tenant reference attack.");
-                        }
-                        // SECURITY: If explicit no-tenant, still verify caller didn't bypass by setting TenantId to arbitrary value without proper role
-                        if (_tenantContext.IsExplicitNoTenant)
-                        {
-                            // Already validated role in IsExplicitNoTenant getter, but log for audit
-                        }
-                    }
-                }
-                else if (entry.State == EntityState.Modified)
-                {
-                    var originalTenantId = entry.OriginalValues.GetValue<long>(nameof(ITenantEntity.TenantId));
-                    if (originalTenantId != tenantEntity.TenantId)
-                    {
-                        throw new InvalidOperationException($"Changing TenantId is forbidden for {entry.Entity.GetType().Name}. Original {originalTenantId} -> New {tenantEntity.TenantId}");
-                    }
-                    if (_tenantContext.TenantId.HasValue && tenantEntity.TenantId != _tenantContext.TenantId.Value && !_tenantContext.IsExplicitNoTenant)
-                    {
-                        throw new InvalidOperationException($"TenantId mismatch on update: {entry.Entity.GetType().Name} TenantId {tenantEntity.TenantId} vs context {_tenantContext.TenantId}");
-                    }
-
-                    entry.Entity.UpdatedAt = DateTime.UtcNow;
-                    entry.Entity.UpdatedBy = _tenantContext.ActorUserId;
-                }
-
-                if (entry.State == EntityState.Added)
-                {
-                    entry.Entity.CreatedAt = DateTime.UtcNow;
-                    entry.Entity.CreatedBy = _tenantContext.ActorUserId;
-                }
-            }
-            else
-            {
-                if (entry.State == EntityState.Added)
-                {
-                    entry.Entity.CreatedAt = DateTime.UtcNow;
-                    entry.Entity.CreatedBy = _tenantContext.ActorUserId;
-                }
-                if (entry.State == EntityState.Modified)
-                {
-                    entry.Entity.UpdatedAt = DateTime.UtcNow;
-                    entry.Entity.UpdatedBy = _tenantContext.ActorUserId;
-                }
-            }
-
             if (entry.State == EntityState.Deleted)
             {
                 entry.State = EntityState.Modified;
                 entry.Entity.IsDeleted = true;
-                entry.Entity.DeletedAt = DateTime.UtcNow;
-                entry.Entity.DeletedBy = _tenantContext.ActorUserId;
-                entry.Entity.UpdatedAt = DateTime.UtcNow;
+                entry.Entity.DeletedAt = now;
+                entry.Entity.DeletedBy = actor;
+            }
+
+            if (entry.Entity is ITenantEntity tenantEntity)
+                EnforceTenantOwnership(entry, tenantEntity);
+
+            if (entry.State == EntityState.Added)
+            {
+                entry.Entity.CreatedAt = now;
+                entry.Entity.CreatedBy ??= actor;
+                entry.Entity.UpdatedAt = now;
+            }
+            else
+            {
+                entry.Entity.UpdatedAt = now;
+                entry.Entity.UpdatedBy = actor;
             }
         }
+    }
 
-        _auditInterceptor.CaptureAuditEntries(this);
-        var result = await base.SaveChangesAsync(cancellationToken);
-        await _auditInterceptor.WriteAuditsAsync(this, cancellationToken);
-        return result;
+    private void EnforceTenantOwnership(EntityEntry<BaseEntity> entry, ITenantEntity tenantEntity)
+    {
+        var name = entry.Entity.GetType().Name;
+        var contextTenant = _tenantContext.TenantId;
+        var bypass = IsExplicitNoTenant;
+
+        if (entry.State == EntityState.Added)
+        {
+            if (tenantEntity.TenantId == 0)
+            {
+                if (contextTenant.HasValue) { tenantEntity.TenantId = contextTenant.Value; return; }
+                throw new InvalidOperationException(bypass
+                    ? $"Explicit no-tenant save requires TenantId to be set on {name}. Actor {_tenantContext.ActorUserId} role {_tenantContext.ActorRole}"
+                    : $"Cannot save {name} without TenantId: no tenant context resolved.");
+            }
+            if (contextTenant.HasValue && tenantEntity.TenantId != contextTenant.Value && !bypass)
+                throw new InvalidOperationException($"TenantId mismatch: {name} has TenantId {tenantEntity.TenantId} but the request tenant is {contextTenant}. Possible cross-tenant write.");
+            return;
+        }
+
+        var originalTenantId = entry.OriginalValues.GetValue<long>(nameof(ITenantEntity.TenantId));
+        if (originalTenantId != tenantEntity.TenantId)
+            throw new InvalidOperationException($"Changing TenantId is forbidden for {name}. Original {originalTenantId} -> New {tenantEntity.TenantId}");
+        if (contextTenant.HasValue && tenantEntity.TenantId != contextTenant.Value && !bypass)
+            throw new InvalidOperationException($"TenantId mismatch on update: {name} TenantId {tenantEntity.TenantId} vs request tenant {contextTenant}");
     }
 }

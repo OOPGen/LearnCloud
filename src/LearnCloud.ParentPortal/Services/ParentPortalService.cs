@@ -1,3 +1,6 @@
+using LearnCloud.AttendanceTimetable.Entities;
+using LearnCloud.Auth.Entities;
+using LearnCloud.Messaging.Entities;
 using LearnCloud.MultiTenancy.Context;
 using LearnCloud.Domain.Entities;
 using LearnCloud.ParentPortal.DTOs;
@@ -131,8 +134,8 @@ public class ParentPortalService : IParentPortalService
         var children = new List<ChildDto>();
         foreach (var student in students)
         {
-            var grade = await _db.Grades.FirstOrDefaultAsync(g => g.Id == student.GradeId, ct);
-            var stream = await _db.Streams.FirstOrDefaultAsync(s => s.Id == student.StreamId, ct);
+            var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == student.GradeId, ct);
+            var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == student.StreamId, ct);
             children.Add(new ChildDto(
                 student.Id,
                 student.StudentNumber,
@@ -156,31 +159,22 @@ public class ParentPortalService : IParentPortalService
         await _authz.EnsureGuardianOfStudentAsync(tenantId, guardianId, studentId, ct);
 
         // PERFORMANCE FIX C2: Was 10+ sequential queries + N+1 subject lookups in loops
-        // Fixed: Parallel fetching via Task.WhenAll + batch subject loading + single queries
+        // Batch subject loading and single queries remain; the Task.WhenAll part was reverted (see below).
 
         var studentTask = _db.Set<Student>().FirstOrDefaultAsync(s => s.Id == studentId && s.TenantId == tenantId && !s.IsDeleted, ct);
         var student = await studentTask ?? throw new InvalidOperationException("Student not found");
 
-        // Parallel fetch of independent data: grade, stream, currentTerm, invoices, attendance, latestReport, upcomingAssessments, notices, homework
-        var gradeTask = _db.Grades.FirstOrDefaultAsync(g => g.Id == student.GradeId, ct);
-        var streamTask = _db.Streams.FirstOrDefaultAsync(s => s.Id == student.StreamId, ct);
-        var currentTermTask = _db.Set<Term>().FirstOrDefaultAsync(t => t.IsCurrent && t.TenantId == tenantId, ct);
-        var invoicesTask = _db.Set<Fees.Entities.FeeInvoice>().Where(i => i.TenantId == tenantId && i.StudentId == studentId && !i.IsDeleted && i.BalanceDue > 0).ToListAsync(ct);
-        var latestReportTask = _db.Set<ReportCard>().Where(rc => rc.TenantId == tenantId && rc.StudentId == studentId && rc.Status == "published" && !rc.IsDeleted).OrderByDescending(rc => rc.PublishedAt).FirstOrDefaultAsync(ct);
-        var upcomingAssessmentsTask = _db.Set<Assessment>().Where(a => a.TenantId == tenantId && a.GradeId == student.GradeId && a.StreamId == student.StreamId && !a.IsDeleted && a.AssessmentDate >= DateTime.UtcNow.Date && a.AssessmentDate <= DateTime.UtcNow.Date.AddDays(14)).OrderBy(a => a.AssessmentDate).Take(5).ToListAsync(ct);
-        var noticesTask = _db.Set<Messaging.Entities.MessageBatch>().Where(b => b.TenantId == tenantId && !b.IsDeleted).OrderByDescending(b => b.CreatedAt).Take(5).ToListAsync(ct);
-        var homeworkTask = _db.Set<TeacherPortal.Entities.HomeworkAssignment>().Where(h => h.TenantId == tenantId && h.GradeId == student.GradeId && h.StreamId == student.StreamId && !h.IsDeleted && h.DueDate >= DateTime.UtcNow.Date).OrderBy(h => h.DueDate).Take(5).ToListAsync(ct);
+        // Sequential on purpose: one DbContext cannot run queries concurrently, and the
+        // earlier Task.WhenAll version threw "a second operation was started on this context".
 
-        await Task.WhenAll(gradeTask, streamTask, currentTermTask, invoicesTask, latestReportTask, upcomingAssessmentsTask, noticesTask, homeworkTask);
-
-        var grade = await gradeTask;
-        var stream = await streamTask;
-        var currentTerm = await currentTermTask ?? await _db.Set<Term>().FirstOrDefaultAsync(t => t.TenantId == tenantId, ct);
-        var invoices = await invoicesTask;
-        var latestReport = await latestReportTask;
-        var upcomingAssessments = await upcomingAssessmentsTask;
-        var notices = await noticesTask;
-        var homework = await homeworkTask;
+        var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == student.GradeId, ct);
+        var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == student.StreamId, ct);
+        var currentTerm = (await _db.Set<Term>().FirstOrDefaultAsync(t => t.IsCurrent && t.TenantId == tenantId, ct)) ?? await _db.Set<Term>().FirstOrDefaultAsync(t => t.TenantId == tenantId, ct);
+        var invoices = await _db.Set<Fees.Entities.FeeInvoice>().Where(i => i.TenantId == tenantId && i.StudentId == studentId && !i.IsDeleted && i.BalanceDue > 0).ToListAsync(ct);
+        var latestReport = await _db.Set<ReportCard>().Where(rc => rc.TenantId == tenantId && rc.StudentId == studentId && rc.Status == "published" && !rc.IsDeleted).OrderByDescending(rc => rc.PublishedAt).FirstOrDefaultAsync(ct);
+        var upcomingAssessments = await _db.Set<Assessment>().Where(a => a.TenantId == tenantId && a.GradeId == student.GradeId && a.StreamId == student.StreamId && !a.IsDeleted && a.AssessmentDate >= DateTime.UtcNow.Date && a.AssessmentDate <= DateTime.UtcNow.Date.AddDays(14)).OrderBy(a => a.AssessmentDate).Take(5).ToListAsync(ct);
+        var notices = await _db.Set<Messaging.Entities.MessageBatch>().Where(b => b.TenantId == tenantId && !b.IsDeleted).OrderByDescending(b => b.CreatedAt).Take(5).ToListAsync(ct);
+        var homework = await _db.Set<TeacherPortal.Entities.HomeworkAssignment>().Where(h => h.TenantId == tenantId && h.GradeId == student.GradeId && h.StreamId == student.StreamId && !h.IsDeleted && h.DueDate >= DateTime.UtcNow.Date).OrderBy(h => h.DueDate).Take(5).ToListAsync(ct);
 
         var outstanding = invoices.Sum(i => i.BalanceDue);
         var currency = invoices.FirstOrDefault()?.Currency ?? "USD";
@@ -335,7 +329,7 @@ public class ParentPortalService : IParentPortalService
         await _authz.EnsureGuardianOfStudentAsync(tenantId, guardianId, rc.StudentId, ct);
         if (rc.Status != "published") throw new UnauthorizedAccessException("Report card not published, only published visible to parents");
 
-        var subjects = await _db.Set<ReportCardSubject>().Where(s => s.TenantId == tenantId && s.ReportCardId == rc.Id && !s.IsDeleted) // SECURITY C5.ToListAsync(ct);
+        var subjects = await _db.Set<ReportCardSubject>().Where(s => s.TenantId == tenantId && s.ReportCardId == rc.Id && !s.IsDeleted).ToListAsync(ct);
         var subjectDtos = subjects.Select(s => new SubjectResultDto(s.SubjectId, s.SubjectName, s.Score, s.MaxScore, s.GradeLetter, s.TeacherComment, s.ClassAverage)).ToList();
 
         var attendance = await GetAttendanceSummaryAsync(tenantId, guardianId, rc.StudentId, rc.AcademicYearId, rc.TermId, ct);

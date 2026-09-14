@@ -13,6 +13,15 @@ public abstract class BaseEntity
     public long? DeletedBy { get; set; }
 }
 
+// Filter for unique indexes on soft-deletable tables. Deletes are soft, so deleted rows
+// stay in the table; without this filter a deleted role, grant, domain or user email
+// could never be created again. Leave it off where values must never be reused
+// (invoice numbers, token hashes).
+public static class SoftDelete
+{
+    public const string ActiveRowsFilter = "is_deleted = false";
+}
+
 // ITenantEntity with TenantId discriminator - shared DB
 public interface ITenantEntity
 {

@@ -1,3 +1,5 @@
+using LearnCloud.AttendanceTimetable.Entities;
+using LearnCloud.HR.Entities;
 using LearnCloud.MultiTenancy.Context;
 using LearnCloud.MultiTenancy.Entities;
 using LearnCloud.TeacherPortal.Entities;
@@ -28,18 +30,18 @@ public class TeacherPortalAuthorizationTests
         using (tenantContext.BeginTenantScope(tenantId))
         {
             // Teachers as staff profiles linked to user ids 100 and 200
-            var teacherA = new StaffProfile { TenantId=tenantId, UserId=100, StaffNumber="T001", FirstName="Alice", LastName="Moyo", EmploymentType="permanent" };
-            var teacherB = new StaffProfile { TenantId=tenantId, UserId=200, StaffNumber="T002", FirstName="Bob", LastName="Dube", EmploymentType="permanent" };
-            db.Set<StaffProfile>().AddRange(teacherA, teacherB);
+            var teacherA = new Staff { TenantId=tenantId, UserId=100, StaffNumber="T001", FirstName="Alice", LastName="Moyo", EmploymentType="permanent" };
+            var teacherB = new Staff { TenantId=tenantId, UserId=200, StaffNumber="T002", FirstName="Bob", LastName="Dube", EmploymentType="permanent" };
+            db.Set<Staff>().AddRange(teacherA, teacherB);
             await db.SaveChangesAsync();
 
             var grade = new Grade { TenantId=tenantId, Name="Grade 5", Code="G5", AcademicYearId=2026 };
-            db.Grades.Add(grade);
+            db.Set<Grade>().Add(grade);
             await db.SaveChangesAsync();
 
-            var streamA = new Stream { TenantId=tenantId, GradeId=grade.Id, Name="Blue", Capacity=40, AcademicYearId=2026, ClassTeacherStaffId=teacherA.Id };
-            var streamB = new Stream { TenantId=tenantId, GradeId=grade.Id, Name="Green", Capacity=40, AcademicYearId=2026, ClassTeacherStaffId=teacherB.Id };
-            db.Streams.AddRange(streamA, streamB);
+            var streamA = new ClassStream { TenantId=tenantId, GradeId=grade.Id, Name="Blue", Capacity=40, AcademicYearId=2026, ClassTeacherStaffId=teacherA.Id };
+            var streamB = new ClassStream { TenantId=tenantId, GradeId=grade.Id, Name="Green", Capacity=40, AcademicYearId=2026, ClassTeacherStaffId=teacherB.Id };
+            db.Set<ClassStream>().AddRange(streamA, streamB);
             await db.SaveChangesAsync();
 
             // Timetable: teacher A teaches Blue, teacher B teaches Green
@@ -69,11 +71,11 @@ public class TeacherPortalAuthorizationTests
             var authz = new TeacherAuthorizationService(db);
 
             // Teacher A (staff id 1) should be assigned to Blue, not Green
-            var teacherAId = await db.Set<StaffProfile>().Where(s=>s.StaffNumber=="T001").Select(s=>s.Id).FirstAsync();
-            var teacherBId = await db.Set<StaffProfile>().Where(s=>s.StaffNumber=="T002").Select(s=>s.Id).FirstAsync();
-            var gradeId = await db.Grades.Where(g=>g.Code=="G5").Select(g=>g.Id).FirstAsync();
-            var streamBlueId = await db.Streams.Where(s=>s.Name=="Blue").Select(s=>s.Id).FirstAsync();
-            var streamGreenId = await db.Streams.Where(s=>s.Name=="Green").Select(s=>s.Id).FirstAsync();
+            var teacherAId = await db.Set<Staff>().Where(s=>s.StaffNumber=="T001").Select(s=>s.Id).FirstAsync();
+            var teacherBId = await db.Set<Staff>().Where(s=>s.StaffNumber=="T002").Select(s=>s.Id).FirstAsync();
+            var gradeId = await db.Set<Grade>().Where(g=>g.Code=="G5").Select(g=>g.Id).FirstAsync();
+            var streamBlueId = await db.Set<ClassStream>().Where(s=>s.Name=="Blue").Select(s=>s.Id).FirstAsync();
+            var streamGreenId = await db.Set<ClassStream>().Where(s=>s.Name=="Green").Select(s=>s.Id).FirstAsync();
 
             // A can access Blue
             var canAccessBlue = await authz.IsAssignedToClassAsync(tenantId, teacherAId, gradeId, streamBlueId);
@@ -110,30 +112,30 @@ public class TeacherPortalAuthorizationTests
         var tenantId = 1L;
         using (tenantContext.BeginTenantScope(tenantId))
         {
-            var teacherA = new StaffProfile { TenantId=tenantId, UserId=100, StaffNumber="T001", FirstName="Alice", LastName="Moyo" };
-            var teacherB = new StaffProfile { TenantId=tenantId, UserId=200, StaffNumber="T002", FirstName="Bob", LastName="Dube" };
-            db.Set<StaffProfile>().AddRange(teacherA, teacherB);
+            var teacherA = new Staff { TenantId=tenantId, UserId=100, StaffNumber="T001", FirstName="Alice", LastName="Moyo" };
+            var teacherB = new Staff { TenantId=tenantId, UserId=200, StaffNumber="T002", FirstName="Bob", LastName="Dube" };
+            db.Set<Staff>().AddRange(teacherA, teacherB);
             await db.SaveChangesAsync();
 
             var grade = new Grade { TenantId=tenantId, Name="Grade 5", Code="G5", AcademicYearId=2026 };
-            db.Grades.Add(grade);
+            db.Set<Grade>().Add(grade);
             await db.SaveChangesAsync();
 
-            var streamA = new Stream { TenantId=tenantId, GradeId=grade.Id, Name="Blue", Capacity=40, AcademicYearId=2026, ClassTeacherStaffId=teacherA.Id };
-            var streamB = new Stream { TenantId=tenantId, GradeId=grade.Id, Name="Green", Capacity=40, AcademicYearId=2026, ClassTeacherStaffId=teacherB.Id };
-            var streamC = new Stream { TenantId=tenantId, GradeId=grade.Id, Name="Red", Capacity=40, AcademicYearId=2026, ClassTeacherStaffId=teacherA.Id };
-            db.Streams.AddRange(streamA, streamB, streamC);
+            var streamA = new ClassStream { TenantId=tenantId, GradeId=grade.Id, Name="Blue", Capacity=40, AcademicYearId=2026, ClassTeacherStaffId=teacherA.Id };
+            var streamB = new ClassStream { TenantId=tenantId, GradeId=grade.Id, Name="Green", Capacity=40, AcademicYearId=2026, ClassTeacherStaffId=teacherB.Id };
+            var streamC = new ClassStream { TenantId=tenantId, GradeId=grade.Id, Name="Red", Capacity=40, AcademicYearId=2026, ClassTeacherStaffId=teacherA.Id };
+            db.Set<ClassStream>().AddRange(streamA, streamB, streamC);
             await db.SaveChangesAsync();
         }
 
         using (tenantContext.BeginTenantScope(tenantId))
         {
             var authz = new TeacherAuthorizationService(db);
-            var teacherAId = await db.Set<StaffProfile>().Where(s=>s.StaffNumber=="T001").Select(s=>s.Id).FirstAsync();
+            var teacherAId = await db.Set<Staff>().Where(s=>s.StaffNumber=="T001").Select(s=>s.Id).FirstAsync();
             var assigned = await authz.GetAssignedClassesAsync(tenantId, teacherAId);
             // Teacher A should have Blue and Red, not Green
             Assert.Equal(2, assigned.Count);
-            Assert.DoesNotContain(assigned, x=>x.streamId == db.Streams.First(s=>s.Name=="Green").Id);
+            Assert.DoesNotContain(assigned, x=>x.streamId == db.Set<ClassStream>().First(s=>s.Name=="Green").Id);
         }
     }
 
@@ -147,25 +149,25 @@ public class TeacherPortalAuthorizationTests
             // Tenant 1
             using (tenantContext.BeginTenantScope(1))
             {
-                var teacher = new StaffProfile { TenantId=1, UserId=100, StaffNumber="T001", FirstName="Alice", LastName="Moyo" };
-                db.Set<StaffProfile>().Add(teacher);
+                var teacher = new Staff { TenantId=1, UserId=100, StaffNumber="T001", FirstName="Alice", LastName="Moyo" };
+                db.Set<Staff>().Add(teacher);
                 var grade = new Grade { TenantId=1, Name="Grade 5", Code="G5", AcademicYearId=2026 };
-                db.Grades.Add(grade);
+                db.Set<Grade>().Add(grade);
                 await db.SaveChangesAsync();
-                var stream = new Stream { TenantId=1, GradeId=grade.Id, Name="Blue", Capacity=40, AcademicYearId=2026, ClassTeacherStaffId=teacher.Id };
-                db.Streams.Add(stream);
+                var stream = new ClassStream { TenantId=1, GradeId=grade.Id, Name="Blue", Capacity=40, AcademicYearId=2026, ClassTeacherStaffId=teacher.Id };
+                db.Set<ClassStream>().Add(stream);
                 await db.SaveChangesAsync();
             }
             // Tenant 2 same grade/stream names, same ids potentially different due to auto-increment but same logical
             using (tenantContext.BeginTenantScope(2))
             {
-                var teacher = new StaffProfile { TenantId=2, UserId=200, StaffNumber="T001", FirstName="Alice", LastName="Moyo" };
-                db.Set<StaffProfile>().Add(teacher);
+                var teacher = new Staff { TenantId=2, UserId=200, StaffNumber="T001", FirstName="Alice", LastName="Moyo" };
+                db.Set<Staff>().Add(teacher);
                 var grade = new Grade { TenantId=2, Name="Grade 5", Code="G5", AcademicYearId=2026 };
-                db.Grades.Add(grade);
+                db.Set<Grade>().Add(grade);
                 await db.SaveChangesAsync();
-                var stream = new Stream { TenantId=2, GradeId=grade.Id, Name="Blue", Capacity=40, AcademicYearId=2026, ClassTeacherStaffId=teacher.Id };
-                db.Streams.Add(stream);
+                var stream = new ClassStream { TenantId=2, GradeId=grade.Id, Name="Blue", Capacity=40, AcademicYearId=2026, ClassTeacherStaffId=teacher.Id };
+                db.Set<ClassStream>().Add(stream);
                 await db.SaveChangesAsync();
             }
         }
@@ -173,12 +175,12 @@ public class TeacherPortalAuthorizationTests
         using (tenantContext.BeginTenantScope(1))
         {
             var authz = new TeacherAuthorizationService(db);
-            var teacherId = await db.Set<StaffProfile>().Where(s=>s.TenantId==1).Select(s=>s.Id).FirstAsync();
-            var gradeIdTenant1 = await db.Grades.Where(g=>g.TenantId==1).Select(g=>g.Id).FirstAsync();
-            var streamIdTenant1 = await db.Streams.Where(s=>s.TenantId==1).Select(s=>s.Id).FirstAsync();
+            var teacherId = await db.Set<Staff>().Where(s=>s.TenantId==1).Select(s=>s.Id).FirstAsync();
+            var gradeIdTenant1 = await db.Set<Grade>().Where(g=>g.TenantId==1).Select(g=>g.Id).FirstAsync();
+            var streamIdTenant1 = await db.Set<ClassStream>().Where(s=>s.TenantId==1).Select(s=>s.Id).FirstAsync();
 
-            var gradeIdTenant2 = await db.Grades.IgnoreQueryFilters().Where(g=>g.TenantId==2).Select(g=>g.Id).FirstAsync();
-            var streamIdTenant2 = await db.Streams.IgnoreQueryFilters().Where(s=>s.TenantId==2).Select(s=>s.Id).FirstAsync();
+            var gradeIdTenant2 = await db.Set<Grade>().IgnoreQueryFilters().Where(g=>g.TenantId==2).Select(g=>g.Id).FirstAsync();
+            var streamIdTenant2 = await db.Set<ClassStream>().IgnoreQueryFilters().Where(s=>s.TenantId==2).Select(s=>s.Id).FirstAsync();
 
             // In tenant 1 context, global filter hides tenant 2 data, so checking access to tenant 2's class should fail due to not found
             var canAccessOwn = await authz.IsAssignedToClassAsync(1, teacherId, gradeIdTenant1, streamIdTenant1);
@@ -190,12 +192,5 @@ public class TeacherPortalAuthorizationTests
     }
 }
 
-// Stub entities for test compilation (would be shared in real app)
-public class Grade : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public string Name { get; set; } = ""; public string Code { get; set; } = ""; public long AcademicYearId { get; set; } }
-public class Stream : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public long GradeId { get; set; } public string Name { get; set; } = ""; public int Capacity { get; set; } public long? ClassTeacherStaffId { get; set; } public long AcademicYearId { get; set; } }
-public class Student : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public string StudentNumber { get; set; } = ""; public string FirstName { get; set; } = ""; public string LastName { get; set; } = ""; public long GradeId { get; set; } public long StreamId { get; set; } }
-public class StaffProfile : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public long? UserId { get; set; } public string StaffNumber { get; set; } = ""; public string FirstName { get; set; } = ""; public string LastName { get; set; } = ""; public string EmploymentType { get; set; } = ""; }
-public class Assessment : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public long GradeId { get; set; } public long StreamId { get; set; } public long SubjectId { get; set; } public string Name { get; set; } = ""; public long AcademicYearId { get; set; } public long TermId { get; set; } public decimal MaxScore { get; set; } }
-public class Subject : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public string Name { get; set; } = ""; }
-public class Timetable : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public string Name { get; set; } = ""; public long AcademicYearId { get; set; } public long TermId { get; set; } public DateTime EffectiveFrom { get; set; } public DateTime? EffectiveTo { get; set; } public int Version { get; set; } public string Status { get; set; } = ""; }
-public class TimetableSlot : LearnCloud.MultiTenancy.Entities.TenantOwnedEntity { public long TimetableId { get; set; } public long GradeId { get; set; } public long StreamId { get; set; } public long SubjectId { get; set; } public long TeacherStaffId { get; set; } public int DayOfWeek { get; set; } public int PeriodNumber { get; set; } public TimeSpan StartTime { get; set; } public TimeSpan EndTime { get; set; } }
+// Test data uses canonical entities: Domain (Grade, ClassStream, Student, Subject, Assessment),
+// HR (Staff) and AttendanceTimetable (Timetable, TimetableSlot).

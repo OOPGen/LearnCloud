@@ -1,3 +1,4 @@
+using LearnCloud.Library.Entities;
 using LearnCloud.Library.DTOs;
 using LearnCloud.Library.Services;
 using LearnCloud.MultiTenancy.Context;

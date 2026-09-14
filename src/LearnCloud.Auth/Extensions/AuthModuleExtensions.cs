@@ -3,6 +3,7 @@ using System.Threading.RateLimiting;
 using LearnCloud.Auth.Authorization;
 using LearnCloud.Auth.Entities;
 using LearnCloud.Auth.Services;
+using LearnCloud.MultiTenancy.Context;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -37,19 +38,7 @@ public static class AuthModuleExtensions
 
         var pwdOptions = config.GetSection("PasswordPolicy").Get<PasswordPolicyOptions>() ?? new PasswordPolicyOptions();
 
-        // DbContext - PostgreSQL (Supabase compatible) - SECURE: No fallback secrets
-        // Supports both self-hosted Postgres and Supabase (pooled 6543 and direct 5432)
-        services.AddDbContext<AuthDbContext>(opt =>
-        {
-            var conn = config.GetConnectionString("Default") ?? throw new InvalidOperationException("SECURITY: ConnectionStrings__Default must be set via env var - no default allowed. Set POSTGRES_PASSWORD or Supabase connection string via .env.production");
-            if (conn.ToLower().Contains("password=root") || conn.ToLower().Contains("password=learncloud"))
-                throw new InvalidOperationException("SECURITY: Insecure default DB password detected - must use strong password from env");
-            opt.UseNpgsql(conn, npgsql =>
-            {
-                npgsql.EnableRetryOnFailure(3);
-                npgsql.UseQuerySplittingBehavior(Microsoft.EntityFrameworkCore.QuerySplittingBehavior.SplitQuery);
-            });
-        });
+        // Auth data lives in LearnCloudDbContext, registered by AddLearnCloudMultiTenancy.
 
         // Identity Password Hasher - SECURITY H4 FIX: Argon2id memory-hard (OWASP recommended)
         // Uses Argon2PasswordHasher which tries Konscious Argon2id via reflection, falls back to PBKDF2 310k iterations
@@ -73,6 +62,10 @@ public static class AuthModuleExtensions
         {
             options.RequireHttpsMetadata = false; // set true in prod
             options.SaveToken = false; // never log tokens!
+            // Keep claim names exactly as TokenService writes them. The default inbound
+            // mapping renamed "tid" to a Microsoft tenant-id URI, so TenantResolutionMiddleware
+            // never found the tenant and every authenticated request failed with "No tenant context".
+            options.MapInboundClaims = false;
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuer = true,
@@ -82,7 +75,10 @@ public static class AuthModuleExtensions
                 ClockSkew = TimeSpan.FromSeconds(30),
                 ValidIssuer = jwtOptions.Issuer,
                 ValidAudience = jwtOptions.Audience,
-                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Secret))
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Secret)),
+                // TokenService writes role claims with ClaimTypes.Role; [Authorize(Roles=...)] reads this type.
+                RoleClaimType = System.Security.Claims.ClaimTypes.Role,
+                NameClaimType = "uid"
             };
             options.Events = new JwtBearerEvents
             {
@@ -96,11 +92,11 @@ public static class AuthModuleExtensions
                 {
                     // Additional check: token version and security stamp against DB already handled in Permission handler for deeper check
                     // But quick check for disabled user
-                    var db = ctx.HttpContext.RequestServices.GetRequiredService<AuthDbContext>();
+                    var db = ctx.HttpContext.RequestServices.GetRequiredService<LearnCloudDbContext>();
                     var uidClaim = ctx.Principal?.FindFirst("uid")?.Value ?? ctx.Principal?.FindFirst("sub")?.Value;
                     if (long.TryParse(uidClaim, out var uid))
                     {
-                        var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == uid && !u.IsDeleted);
+                        var user = await db.Set<User>().AsNoTracking().FirstOrDefaultAsync(u => u.Id == uid && !u.IsDeleted);
                         if (user == null || user.Status == "disabled" || user.IsLockedOut)
                         {
                             ctx.Fail("User disabled or locked");

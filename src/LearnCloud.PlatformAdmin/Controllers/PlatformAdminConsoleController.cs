@@ -211,10 +211,9 @@ public class PlatformAdminConsoleController : ControllerBase
         var ip = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         var userAgent = Request.Headers["User-Agent"].FirstOrDefault();
 
-        // Verify grant exists and is active and was created by school admin, not platform admin - by design
-        var session = await _impersonationService.StartImpersonationAsync(req.GrantId > 0 ? (await _impersonationService.ListGrantsAsync(0, ct)).FirstOrDefault()?.TenantId ?? 0 : 0, req.GrantId, ActorUserId, ip, userAgent, ct);
-        // Actually need tenantId from grant
-        // Simplified: get grant first to get tenantId
+        // Verify grant exists and is active and was created by school admin, not platform admin - by design.
+        // (A second StartImpersonationAsync call used to run here first, with a guessed grant
+        // from tenant 0, opening a stray session on every impersonation.)
         var grant = (await _impersonationService.ListGrantsAsync(0, ct)).FirstOrDefault(g => g.Id == req.GrantId);
         if (grant == null)
         {
@@ -233,7 +232,7 @@ public class PlatformAdminConsoleController : ControllerBase
     {
         // Quick search all grants for platform admin view
         var db = HttpContext.RequestServices.GetService(typeof(LearnCloudDbContext)) as LearnCloudDbContext;
-        return await db!.Set<Entities.ImpersonationGrant>().Where(g => g.TenantId == tenantId && !g.IsDeleted && g.ExpiresAt > DateTime.UtcNow && g.RevokedAt == null).ToListAsync(ct); // SECURITY C5: Added TenantId
+        return await db!.Set<Entities.ImpersonationGrant>().Where(g => !g.IsDeleted && g.ExpiresAt > DateTime.UtcNow && g.RevokedAt == null).ToListAsync(ct); // Cross-tenant by design: ImpersonationGrant is not tenant-filtered, so no scope is needed.
     }
 
     [ProducesResponseType(201)]
@@ -274,4 +273,4 @@ public class PlatformAdminConsoleController : ControllerBase
     }
 }
 
-public record CreateSupportNoteRequest(string Content, bool IsInternal, string? Category);
+// CreateSupportNoteRequest lives in PlatformAdmin DTOs; the duplicate here was removed.

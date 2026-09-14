@@ -1,14 +1,18 @@
-using System.Threading;
 using LearnCloud.MultiTenancy.Entities;
+using LearnCloud.MultiTenancy.Security;
 
 namespace LearnCloud.MultiTenancy.Context;
 
-// Implementation using AsyncLocal for background jobs + HttpContext Items for request
+// Per-scope tenant state. Registered as scoped: one instance per HTTP request, and
+// background work creates its own DI scope per unit of work.
+//
+// This used to keep its state in a static AsyncLocal. Values set inside an awaited
+// helper method do not flow back to the caller, and every scope in the same async
+// flow shared one mutable state object, so a resolved tenant could silently vanish
+// or leak between scopes. Plain instance state has neither problem.
 public class TenantContext : ITenantContext
 {
-    private static readonly AsyncLocal<TenantContextState> _asyncLocal = new();
-
-    private class TenantContextState
+    private sealed class State
     {
         public long? TenantId;
         public long? SubdomainTenantId;
@@ -18,137 +22,105 @@ public class TenantContext : ITenantContext
         public string? Reason;
         public long? ActorUserId;
         public string? ActorRole;
-        public bool IsExplicitNoTenant = false;
-        public Stack<TenantContextState> Stack = new();
+        public bool IsExplicitNoTenant;
+
+        public State Clone() => (State)MemberwiseClone();
     }
 
-    private TenantContextState State
-    {
-        get => _asyncLocal.Value ??= new TenantContextState();
-        set => _asyncLocal.Value = value;
-    }
+    private State _state = new();
+    private readonly Stack<State> _scopes = new();
 
-    public long? TenantId => State.TenantId;
-    public long? SubdomainTenantId => State.SubdomainTenantId;
-    public long? TokenTenantId => State.TokenTenantId;
-    public Tenant? CurrentTenant => State.CurrentTenant;
-    public bool IsResolved => State.TenantId.HasValue || State.IsExplicitNoTenant;
-    public bool IsPlatform => !State.TenantId.HasValue && !State.IsExplicitNoTenant && State.ActorUserId.HasValue; // platform admin without tenant
-    public bool IsExplicitNoTenant => State.IsExplicitNoTenant;
-    public TenantResolutionSource ResolutionSource => State.Source;
-    public string? ResolutionReason => State.Reason;
-    public long? ActorUserId => State.ActorUserId;
-    public string? ActorRole => State.ActorRole;
+    public long? TenantId => _state.TenantId;
+    public long? SubdomainTenantId => _state.SubdomainTenantId;
+    public long? TokenTenantId => _state.TokenTenantId;
+    public Tenant? CurrentTenant => _state.CurrentTenant;
+    public bool IsResolved => _state.TenantId.HasValue || _state.IsExplicitNoTenant;
+    public bool IsPlatform => !_state.TenantId.HasValue && !_state.IsExplicitNoTenant && _state.ActorUserId.HasValue;
+    public bool IsExplicitNoTenant => _state.IsExplicitNoTenant;
+    public TenantResolutionSource ResolutionSource => _state.Source;
+    public string? ResolutionReason => _state.Reason;
+    public long? ActorUserId => _state.ActorUserId;
+    public string? ActorRole => _state.ActorRole;
 
     public void SetResolvedTenant(long tenantId, Tenant tenant, TenantResolutionSource source, long? subdomainTenantId = null, long? tokenTenantId = null, long? actorUserId = null)
     {
-        State.TenantId = tenantId;
-        State.CurrentTenant = tenant;
-        State.Source = source;
-        if (subdomainTenantId.HasValue) State.SubdomainTenantId = subdomainTenantId;
-        if (tokenTenantId.HasValue) State.TokenTenantId = tokenTenantId;
-        if (actorUserId.HasValue) State.ActorUserId = actorUserId;
-        State.IsExplicitNoTenant = false;
+        _state.TenantId = tenantId;
+        _state.CurrentTenant = tenant;
+        _state.Source = source;
+        if (subdomainTenantId.HasValue) _state.SubdomainTenantId = subdomainTenantId;
+        if (tokenTenantId.HasValue) _state.TokenTenantId = tokenTenantId;
+        if (actorUserId.HasValue) _state.ActorUserId = actorUserId;
+        _state.IsExplicitNoTenant = false;
     }
 
     public void SetSubdomainTenant(long? subdomainTenantId, Tenant? tenant)
     {
-        State.SubdomainTenantId = subdomainTenantId;
-        if (!State.TenantId.HasValue) // only set as current if no token yet (anonymous)
+        _state.SubdomainTenantId = subdomainTenantId;
+        if (!_state.TenantId.HasValue && subdomainTenantId.HasValue)
         {
-            if (subdomainTenantId.HasValue)
-            {
-                State.TenantId = subdomainTenantId;
-                State.CurrentTenant = tenant;
-                State.Source = TenantResolutionSource.Subdomain;
-            }
+            // Anonymous requests only: the subdomain selects login branding.
+            _state.TenantId = subdomainTenantId;
+            _state.CurrentTenant = tenant;
+            _state.Source = TenantResolutionSource.Subdomain;
         }
+    }
+
+    public void SetActor(long actorUserId, string? actorRole)
+    {
+        _state.ActorUserId = actorUserId;
+        _state.ActorRole = actorRole;
     }
 
     public void SetExplicitNoTenant(string reason, long actorUserId, string actorRole)
     {
-        // SECURITY C5 FIX: explicit no-tenant requires privileged role PLATFORM_SUPERADMIN or PLATFORM_SUPPORT
-        // Without this guard, any code could set IsExplicitNoTenant and bypass tenant filter returning all tenants data
-        var allowedRoles = new[] { "PLATFORM_SUPERADMIN", "PLATFORM_SUPPORT", "SYSTEM" };
-        if (!allowedRoles.Contains(actorRole))
-        {
-            throw new UnauthorizedAccessException($"SECURITY: Explicit no-tenant scope requires privileged role {string.Join(",", allowedRoles)}, but got {actorRole}. Actor {actorUserId} reason {reason} - possible privilege escalation attempt.");
-        }
+        if (!PrivilegedRoles.CanUseNoTenantScope(actorRole))
+            throw new UnauthorizedAccessException($"SECURITY: Explicit no-tenant scope requires one of {string.Join(",", PrivilegedRoles.All)}, but got {actorRole}. Actor {actorUserId} reason {reason} - possible privilege escalation attempt.");
         if (string.IsNullOrWhiteSpace(reason) || reason.Length < 10)
-            throw new InvalidOperationException("Explicit no-tenant reason must be >=10 chars for audit");
-        
-        // Audit - must be logged
-        State.IsExplicitNoTenant = true;
-        State.Reason = reason;
-        State.ActorUserId = actorUserId;
-        State.ActorRole = actorRole;
-        State.Source = TenantResolutionSource.ExplicitNoTenant;
-        State.TenantId = null; // no tenant
+            throw new InvalidOperationException("Explicit no-tenant reason must be at least 10 characters for audit");
+
+        _state.IsExplicitNoTenant = true;
+        _state.Reason = reason;
+        _state.ActorUserId = actorUserId;
+        _state.ActorRole = actorRole;
+        _state.Source = TenantResolutionSource.ExplicitNoTenant;
+        _state.TenantId = null;
+        _state.CurrentTenant = null;
     }
 
     public void Clear()
     {
-        _asyncLocal.Value = new TenantContextState();
+        _state = new State();
+        _scopes.Clear();
     }
 
-    public IDisposable BeginNoTenantScope(string reason, long actorUserId, string actorRole = "PLATFORM_SUPERADMIN")
+    public IDisposable BeginNoTenantScope(string reason, long actorUserId, string actorRole = PrivilegedRoles.PlatformSuperAdmin)
     {
-        var previous = CloneState();
-        SetExplicitNoTenant(reason, actorUserId, actorRole);
-        // Push stack for nesting
-        State.Stack.Push(previous);
-        return new ScopeDisposer(() =>
-        {
-            if (State.Stack.Count > 0)
-                _asyncLocal.Value = State.Stack.Pop();
-            else
-                Clear();
-        });
+        _scopes.Push(_state.Clone());
+        try { SetExplicitNoTenant(reason, actorUserId, actorRole); }
+        catch { _state = _scopes.Pop(); throw; }
+        return new ScopeDisposer(this);
     }
 
     public IDisposable BeginTenantScope(long tenantId, TenantResolutionSource source = TenantResolutionSource.JwtToken)
     {
-        var previous = CloneState();
-        State.TenantId = tenantId;
-        State.Source = source;
-        State.IsExplicitNoTenant = false;
-        State.Stack.Push(previous);
-        return new ScopeDisposer(() =>
-        {
-            if (State.Stack.Count > 0)
-                _asyncLocal.Value = State.Stack.Pop();
-            else
-                Clear();
-        });
+        _scopes.Push(_state.Clone());
+        _state.TenantId = tenantId;
+        _state.CurrentTenant = null;
+        _state.Source = source;
+        _state.IsExplicitNoTenant = false;
+        return new ScopeDisposer(this);
     }
 
-    private TenantContextState CloneState()
-    {
-        return new TenantContextState
-        {
-            TenantId = State.TenantId,
-            SubdomainTenantId = State.SubdomainTenantId,
-            TokenTenantId = State.TokenTenantId,
-            CurrentTenant = State.CurrentTenant,
-            Source = State.Source,
-            Reason = State.Reason,
-            ActorUserId = State.ActorUserId,
-            ActorRole = State.ActorRole,
-            IsExplicitNoTenant = State.IsExplicitNoTenant,
-            Stack = State.Stack
-        };
-    }
+    private void EndScope() => _state = _scopes.Count > 0 ? _scopes.Pop() : new State();
 
-    private class ScopeDisposer : IDisposable
+    private sealed class ScopeDisposer : IDisposable
     {
-        private readonly Action _dispose;
-        private bool _disposed;
-        public ScopeDisposer(Action dispose) => _dispose = dispose;
+        private TenantContext? _owner;
+        public ScopeDisposer(TenantContext owner) => _owner = owner;
         public void Dispose()
         {
-            if (_disposed) return;
-            _disposed = true;
-            _dispose();
+            _owner?.EndScope();
+            _owner = null;
         }
     }
 }

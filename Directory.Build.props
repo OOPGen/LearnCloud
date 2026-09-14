@@ -1,0 +1,51 @@
+<Project>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- Restore fails the build on a package downgrade rather than warning.
+         Keep this on: a silent downgrade is how the JWT version drift hid. -->
+    <WarningsAsErrors>NU1605</WarningsAsErrors>
+  </PropertyGroup>
+
+  <!--
+    The feature modules are plain class libraries (Microsoft.NET.Sdk), but every
+    controller, service and middleware in them was authored as though it lived in
+    an ASP.NET Core web project, which supplies these namespaces implicitly.
+    Class libraries do not, which produced the bulk of the compile errors.
+
+    Supplying them here rather than adding usings to ~150 files keeps the fix in
+    one place and stops the mistake recurring in new files.
+
+    LearnCloud.Web is a Vite/React app wrapped in a csproj shell with its Build
+    target disabled; it compiles no C# and needs none of this.
+  -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' != 'LearnCloud.Web'">
+    <FrameworkReference Include="Microsoft.AspNetCore.App"
+                        Condition="'$(UsingMicrosoftNETSdkWeb)' != 'true'" />
+
+    <Using Include="Microsoft.AspNetCore.Builder" />
+    <Using Include="Microsoft.AspNetCore.Http" />
+    <Using Include="Microsoft.Extensions.Configuration" />
+    <Using Include="Microsoft.Extensions.DependencyInjection" />
+    <Using Include="Microsoft.Extensions.Logging" />
+    <Using Include="Microsoft.Extensions.Options" />
+    <Using Include="Microsoft.EntityFrameworkCore" />
+  </ItemGroup>
+
+  <!--
+    LearnCloud.Domain holds the canonical academic entities (Student, Grade,
+    ClassStream, Subject, Guardian, Term, StudentEnrolment). Every feature module
+    reads them, so the reference and the namespace are supplied centrally.
+
+    Excluded: Domain itself, and MultiTenancy which Domain depends on, since
+    either would be a reference cycle.
+  -->
+  <ItemGroup Condition="'$(MSBuildProjectName)' != 'LearnCloud.Web'
+                    And '$(MSBuildProjectName)' != 'LearnCloud.Domain'
+                    And '$(MSBuildProjectName)' != 'LearnCloud.MultiTenancy'">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)src\LearnCloud.Domain\LearnCloud.Domain.csproj" />
+    <Using Include="LearnCloud.Domain.Entities" />
+  </ItemGroup>
+
+</Project>

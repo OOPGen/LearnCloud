@@ -188,9 +188,9 @@ public class WizardService : IWizardService
         // Counts from actual domain tables
         var counts = new Dictionary<string,int>
         {
-            ["grades"] = await _db.Grades.CountAsync(g=>g.TenantId==tenantId, ct),
-            ["streams"] = await _db.Streams.CountAsync(s=>s.TenantId==tenantId, ct),
-            ["subjects"] = await _db.Subjects.CountAsync(s=>s.TenantId==tenantId, ct),
+            ["grades"] = await _db.Set<Grade>().CountAsync(g=>g.TenantId==tenantId, ct),
+            ["streams"] = await _db.Set<ClassStream>().CountAsync(s=>s.TenantId==tenantId, ct),
+            ["subjects"] = await _db.Set<Subject>().CountAsync(s=>s.TenantId==tenantId, ct),
             ["departments"] = 0, // placeholder if departments table not yet
             ["gradingBands"] = 0,
             ["terms"] = 0,
@@ -408,21 +408,21 @@ public class WizardService : IWizardService
         // Clear existing? For wizard first run, we can upsert
         foreach (var cls in dto.Classes)
         {
-            var existingGrade = await _db.Grades.FirstOrDefaultAsync(g=>g.TenantId==tenantId && g.Code==cls.GradeCode && !g.IsDeleted, ct);
+            var existingGrade = await _db.Set<Grade>().FirstOrDefaultAsync(g=>g.TenantId==tenantId && g.Code==cls.GradeCode && !g.IsDeleted, ct);
             if (existingGrade==null)
             {
                 existingGrade = new Grade { TenantId=tenantId, Name=cls.GradeName, Code=cls.GradeCode, AcademicYearId=2026 };
-                _db.Grades.Add(existingGrade);
+                _db.Set<Grade>().Add(existingGrade);
                 await _db.SaveChangesAsync(ct);
             }
 
             foreach (var stream in cls.Streams)
             {
-                var existingStream = await _db.Streams.FirstOrDefaultAsync(s=>s.TenantId==tenantId && s.GradeId==existingGrade.Id && s.Name==stream.Name && !s.IsDeleted, ct);
+                var existingStream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s=>s.TenantId==tenantId && s.GradeId==existingGrade.Id && s.Name==stream.Name && !s.IsDeleted, ct);
                 if (existingStream==null)
                 {
-                    var newStream = new Stream { TenantId=tenantId, GradeId=existingGrade.Id, Name=stream.Name, Capacity=stream.Capacity, AcademicYearId=2026 };
-                    _db.Streams.Add(newStream);
+                    var newStream = new ClassStream { TenantId=tenantId, GradeId=existingGrade.Id, Name=stream.Name, Capacity=stream.Capacity, AcademicYearId=2026 };
+                    _db.Set<ClassStream>().Add(newStream);
                 }
             }
         }
@@ -433,11 +433,11 @@ public class WizardService : IWizardService
     {
         foreach (var sub in dto.Subjects.Where(s=>s.Selected))
         {
-            var existing = await _db.Subjects.FirstOrDefaultAsync(s=>s.TenantId==tenantId && s.Code==sub.Code && !s.IsDeleted, ct);
+            var existing = await _db.Set<Subject>().FirstOrDefaultAsync(s=>s.TenantId==tenantId && s.Code==sub.Code && !s.IsDeleted, ct);
             if (existing==null)
             {
                 var newSub = new Subject { TenantId=tenantId, Name=sub.Name, Code=sub.Code };
-                _db.Subjects.Add(newSub);
+                _db.Set<Subject>().Add(newSub);
             }
             else
             {
