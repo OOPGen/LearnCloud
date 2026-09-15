@@ -32,7 +32,10 @@ public sealed class LearnCloudApiFixture : IAsyncLifetime
         {
             ["ConnectionStrings:Default"] = _postgres.GetConnectionString(),
             ["Jwt:Secret"] = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)),
-            ["Jobs:Enabled"] = "false"
+            ["Jobs:Enabled"] = "false",
+            // Every test calls the API as one of two admins; the production limit of 60 a
+            // minute per user would throttle the suite.
+            ["RateLimiting:ApiGeneralPerMinute"] = "5000"
         };
 
         Factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>

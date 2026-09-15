@@ -129,7 +129,7 @@ export default function LoginSkewed() {
     setErrors({});
     try {
       await login(loginForm.email, loginForm.password, hostSlug || loginForm.school.trim().toLowerCase());
-      navigate(location.state?.from || '/subjects', { replace: true });
+      navigate(location.state?.from || '/students', { replace: true });
     } catch (error) {
       setErrors({ ...error.fieldErrors, loginForm: error.message || 'Sign in failed' });
     } finally {

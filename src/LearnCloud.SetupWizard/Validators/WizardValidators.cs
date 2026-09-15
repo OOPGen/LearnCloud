@@ -56,7 +56,8 @@ public class TermsSetupValidator : AbstractValidator<TermsSetupDto>
         var ordered = dto.Terms.OrderBy(t => t.StartDate).ToList();
         for (int i = 1; i < ordered.Count; i++)
         {
-            if (ordered[i].StartDate < ordered[i - 1].EndDate) return false;
+            // A term starts after the previous one ends, as the academic calendar requires.
+            if (ordered[i].StartDate <= ordered[i - 1].EndDate) return false;
         }
         return true;
     }

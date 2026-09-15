@@ -150,11 +150,14 @@ public static class AuthModuleExtensions
                     {
                         PermitLimit = 10, Window = TimeSpan.FromHours(1), QueueLimit = 0
                     }));
+            // RateLimiting:ApiGeneralPerMinute lets the integration tests, which run every
+            // test as the same user, raise the limit; production keeps the default.
+            var generalPerMinute = config.GetValue("RateLimiting:ApiGeneralPerMinute", 60);
             options.AddPolicy("api_general", httpContext =>
                 RateLimitPartition.GetFixedWindowLimiter((httpContext.User.FindFirst("uid")?.Value ?? httpContext.Connection.RemoteIpAddress?.ToString()) ?? "unknown",
                     _ => new FixedWindowRateLimiterOptions
                     {
-                        PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
+                        PermitLimit = generalPerMinute, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
                     }));
             options.AddPolicy("sensitive", httpContext =>
                 RateLimitPartition.GetFixedWindowLimiter((httpContext.User.FindFirst("uid")?.Value ?? httpContext.Connection.RemoteIpAddress?.ToString()) ?? "unknown",

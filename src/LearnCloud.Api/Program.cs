@@ -237,7 +237,8 @@ app.UseExceptionHandler(appBuilder =>
             {
                 statusCode = 404; title = "Resource not found"; detail = invalidOp.Message; type = "https://learncloud.co.zw/errors/not-found";
             }
-            else if (invalidOp.Message.Contains("already exists", StringComparison.OrdinalIgnoreCase) || invalidOp.Message.Contains("already taken", StringComparison.OrdinalIgnoreCase))
+            else if (invalidOp.Message.Contains("already exists", StringComparison.OrdinalIgnoreCase) || invalidOp.Message.Contains("already taken", StringComparison.OrdinalIgnoreCase)
+                     || invalidOp.Message.Contains("already linked", StringComparison.OrdinalIgnoreCase))
             {
                 statusCode = 409; title = "Conflict"; detail = invalidOp.Message; type = "https://learncloud.co.zw/errors/conflict";
             }

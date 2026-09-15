@@ -6,6 +6,11 @@ const Home = lazy(() => import('./pages/Home'))
 const LoginSkewed = lazy(() => import('./pages/LoginSkewed'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const SubjectsPage = lazy(() => import('./pages/SubjectsPage'))
+const AcademicYearsPage = lazy(() => import('./pages/AcademicYearsPage'))
+const GradesPage = lazy(() => import('./pages/GradesPage'))
+const StudentsPage = lazy(() => import('./pages/StudentsPage'))
+const StudentDetailPage = lazy(() => import('./pages/StudentDetailPage'))
+const GuardiansPage = lazy(() => import('./pages/GuardiansPage'))
 const FeesPage = lazy(() => import('./pages/FeesPage'))
 
 function LoadingFallback() {
@@ -26,14 +31,19 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<LoginSkewed />} />
-          {/* Signed-in area. Only Subjects is connected to the API so far; Dashboard and
-              Fees are still static previews. Links to modules without a page (students,
-              grades, ...) used to render the Subjects mockup and now redirect instead. */}
+          {/* Signed-in area. Subjects and the school records pages (academic years, grades,
+              students, guardians) use the API; Dashboard and Fees are still static previews.
+              Links to modules without a page redirect to Students. */}
           <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
           <Route path="/analytics" element={<RequireAuth><Dashboard /></RequireAuth>} />
+          <Route path="/academic-years" element={<RequireAuth><AcademicYearsPage /></RequireAuth>} />
+          <Route path="/grades" element={<RequireAuth><GradesPage /></RequireAuth>} />
           <Route path="/subjects" element={<RequireAuth><SubjectsPage /></RequireAuth>} />
+          <Route path="/students" element={<RequireAuth><StudentsPage /></RequireAuth>} />
+          <Route path="/students/:id" element={<RequireAuth><StudentDetailPage /></RequireAuth>} />
+          <Route path="/guardians" element={<RequireAuth><GuardiansPage /></RequireAuth>} />
           <Route path="/fees/*" element={<RequireAuth><FeesPage /></RequireAuth>} />
-          <Route path="*" element={<Navigate to="/subjects" replace />} />
+          <Route path="*" element={<Navigate to="/students" replace />} />
         </Routes>
       </Suspense>
     </BrowserRouter>

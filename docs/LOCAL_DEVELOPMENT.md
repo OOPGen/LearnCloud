@@ -36,6 +36,8 @@ Then open:
 2. `POST /api/auth/login` with that email, password and the school slug.
 3. Use the returned `accessToken` as a Bearer token.
 4. `POST /api/academic/subjects`, then list, get, update and delete.
+5. School records: add an academic year and its terms, a grade and a stream, then a student.
+   The rules and endpoints are in [SCHOOL_RECORDS.md](SCHOOL_RECORDS.md).
 
 Locally there are no subdomains. Send `X-Tenant-Slug: <slug>` to act as if the request
 came from `<slug>.learncloud.co.zw`. A token for one school used with another school's
@@ -85,6 +87,7 @@ throwaway schools with `--full`.
 | `ConnectionStrings:Default` | user-secrets | Required. |
 | `Jwt:Secret` | user-secrets | Required, 32+ characters, rejected if it looks like a demo value. |
 | `Jobs:Enabled` | `appsettings.Development.json` (false) | Scheduled dunning and communication-rule jobs. |
+| `RateLimiting:ApiGeneralPerMinute` | default 60 | Requests per minute per signed-in user for most endpoints. The integration tests raise it. |
 | `AI:OpenAI:ApiKey` | optional | Without it, AI features use the rule-based provider. |
 | `Messaging:Sms`, `Messaging:Email` | optional | Needed only to actually send messages. |
 

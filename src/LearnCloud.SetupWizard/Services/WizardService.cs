@@ -1,4 +1,7 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using FluentValidation;
+using LearnCloud.Core.Services;
 using LearnCloud.MultiTenancy.Context;
 using LearnCloud.MultiTenancy.Entities;
 using LearnCloud.SetupWizard.DTOs;
@@ -27,10 +30,26 @@ public class WizardService : IWizardService
     private readonly LearnCloudDbContext _db;
     private readonly ITenantContext _tenantContext;
     private readonly ILogger<WizardService> _logger;
+    private readonly IAcademicCalendarService _calendar;
+    private readonly IClassStructureService _classes;
+    private readonly IServiceProvider _services;
 
-    public WizardService(LearnCloudDbContext db, ITenantContext tenantContext, ILogger<WizardService> logger)
+    public WizardService(LearnCloudDbContext db, ITenantContext tenantContext, ILogger<WizardService> logger,
+        IAcademicCalendarService calendar, IClassStructureService classes, IServiceProvider services)
     {
         _db = db; _tenantContext = tenantContext; _logger = logger;
+        _calendar = calendar; _classes = classes; _services = services;
+    }
+
+    // Step bodies arrive as raw JSON, which the API's validation filter cannot see, so each
+    // step is validated here. A failure is a FluentValidation.ValidationException, which the
+    // controller returns as 400 with the errors.
+    private async Task<T> ValidatedAsync<T>(T? dto, CancellationToken ct) where T : class
+    {
+        if (dto is null) throw new InvalidOperationException("The step data is missing.");
+        if (_services.GetService(typeof(IValidator<T>)) is IValidator<T> validator)
+            await validator.ValidateAndThrowAsync(dto, ct);
+        return dto;
     }
 
     private async Task<WizardProgress> GetOrCreateProgressAsync(long tenantId, CancellationToken ct)
@@ -94,48 +113,48 @@ public class WizardService : IWizardService
         switch (step)
         {
             case 1:
-                var schoolProfile = (data is JsonElement je1) ? JsonSerializer.Deserialize<SchoolProfileDto>(je1.GetRawText()) : (SchoolProfileDto)data;
-                await SaveSchoolProfileAsync(tenantId, schoolProfile!, ct);
+                var schoolProfile = await ValidatedAsync(ReadStep<SchoolProfileDto>(data), ct);
+                await SaveSchoolProfileAsync(tenantId, schoolProfile, ct);
                 fullData = fullData with { SchoolProfile = schoolProfile };
                 break;
             case 2:
-                var branding = (data is JsonElement je2) ? JsonSerializer.Deserialize<BrandingDto>(je2.GetRawText()) : (BrandingDto)data;
-                await SaveBrandingAsync(tenantId, branding!, ct);
+                var branding = await ValidatedAsync(ReadStep<BrandingDto>(data), ct);
+                await SaveBrandingAsync(tenantId, branding, ct);
                 fullData = fullData with { Branding = branding };
                 break;
             case 3:
-                var acadYear = (data is JsonElement je3) ? JsonSerializer.Deserialize<AcademicYearDto>(je3.GetRawText()) : (AcademicYearDto)data;
-                await SaveAcademicYearAsync(tenantId, acadYear!, ct);
+                var acadYear = await ValidatedAsync(ReadStep<AcademicYearDto>(data), ct);
+                await SaveAcademicYearAsync(tenantId, userId, acadYear, ct);
                 fullData = fullData with { AcademicYear = acadYear };
                 break;
             case 4:
-                var terms = (data is JsonElement je4) ? JsonSerializer.Deserialize<TermsSetupDto>(je4.GetRawText()) : (TermsSetupDto)data;
-                await SaveTermsAsync(tenantId, terms!, ct);
+                var terms = await ValidatedAsync(ReadStep<TermsSetupDto>(data), ct);
+                await SaveTermsAsync(tenantId, userId, terms, ct);
                 fullData = fullData with { Terms = terms };
                 break;
             case 5:
-                var classes = (data is JsonElement je5) ? JsonSerializer.Deserialize<ClassesAndStreamsDto>(je5.GetRawText()) : (ClassesAndStreamsDto)data;
-                await SaveClassesAndStreamsAsync(tenantId, classes!, ct);
+                var classes = await ValidatedAsync(ReadStep<ClassesAndStreamsDto>(data), ct);
+                await SaveClassesAndStreamsAsync(tenantId, userId, classes, ct);
                 fullData = fullData with { ClassesAndStreams = classes };
                 break;
             case 6:
-                var subjects = (data is JsonElement je6) ? JsonSerializer.Deserialize<SubjectsDto>(je6.GetRawText()) : (SubjectsDto)data;
-                await SaveSubjectsAsync(tenantId, subjects!, ct);
+                var subjects = await ValidatedAsync(ReadStep<SubjectsDto>(data), ct);
+                await SaveSubjectsAsync(tenantId, subjects, ct);
                 fullData = fullData with { Subjects = subjects };
                 break;
             case 7:
-                var depts = (data is JsonElement je7) ? JsonSerializer.Deserialize<DepartmentsAndRolesDto>(je7.GetRawText()) : (DepartmentsAndRolesDto)data;
-                await SaveDepartmentsAsync(tenantId, depts!, ct);
+                var depts = await ValidatedAsync(ReadStep<DepartmentsAndRolesDto>(data), ct);
+                await SaveDepartmentsAsync(tenantId, depts, ct);
                 fullData = fullData with { DepartmentsAndRoles = depts };
                 break;
             case 8:
-                var grading = (data is JsonElement je8) ? JsonSerializer.Deserialize<GradingScaleDto>(je8.GetRawText()) : (GradingScaleDto)data;
-                await SaveGradingScaleAsync(tenantId, grading!, ct);
+                var grading = await ValidatedAsync(ReadStep<GradingScaleDto>(data), ct);
+                await SaveGradingScaleAsync(tenantId, grading, ct);
                 fullData = fullData with { GradingScale = grading };
                 break;
             case 9:
-                var prefs = (data is JsonElement je9) ? JsonSerializer.Deserialize<PreferencesDto>(je9.GetRawText()) : (PreferencesDto)data;
-                await SavePreferencesAsync(tenantId, prefs!, ct);
+                var prefs = await ValidatedAsync(ReadStep<PreferencesDto>(data), ct);
+                await SavePreferencesAsync(tenantId, prefs, ct);
                 fullData = fullData with { Preferences = prefs };
                 break;
         }
@@ -185,21 +204,16 @@ public class WizardService : IWizardService
         var progress = await GetOrCreateProgressAsync(tenantId, ct);
         var statusDict = JsonSerializer.Deserialize<Dictionary<int,string>>(progress.StepsStatusJson) ?? new();
 
-        // Counts from actual domain tables
+        // Counts from actual domain tables. Departments and grading bands are stored as JSON
+        // settings, not tables, so they are not counted.
         var counts = new Dictionary<string,int>
         {
+            ["academicYears"] = await _db.Set<AcademicYear>().CountAsync(y=>y.TenantId==tenantId, ct),
+            ["terms"] = await _db.Set<Term>().CountAsync(t=>t.TenantId==tenantId, ct),
             ["grades"] = await _db.Set<Grade>().CountAsync(g=>g.TenantId==tenantId, ct),
             ["streams"] = await _db.Set<ClassStream>().CountAsync(s=>s.TenantId==tenantId, ct),
-            ["subjects"] = await _db.Set<Subject>().CountAsync(s=>s.TenantId==tenantId, ct),
-            ["departments"] = 0, // placeholder if departments table not yet
-            ["gradingBands"] = 0,
-            ["terms"] = 0,
-            ["academicYears"] = 0
+            ["subjects"] = await _db.Set<Subject>().CountAsync(s=>s.TenantId==tenantId, ct)
         };
-
-        // Try to get academic year/term counts if tables exist
-        try { counts["academicYears"] = await _db.Set<Grade>().CountAsync(g=>g.TenantId==tenantId, ct); } catch {}
-        // For demo, we count from wizard data JSON if needed
 
         var completed = statusDict.Count(kv=>kv.Value=="completed");
         var skipped = statusDict.Count(kv=>kv.Value=="skipped");
@@ -237,7 +251,9 @@ public class WizardService : IWizardService
         var tenantSettings = await _db.TenantSettings.FirstOrDefaultAsync(ts=>ts.TenantId==tenantId, ct);
         if (tenantSettings != null)
         {
-            tenantSettings.FeaturesJson = (tenantSettings.FeaturesJson ?? "{}").Replace("}", $",\"setupComplete\":true,\"setupCompletedAt\":\"{DateTime.UtcNow:o}\"}}");
+            // Used to be a string Replace of every "}", which broke the JSON as soon as it held
+            // a nested object (the grading scale).
+            tenantSettings.FeaturesJson = MergeJson(MergeJson(tenantSettings.FeaturesJson, "setupComplete", true), "setupCompletedAt", DateTime.UtcNow);
         }
 
         // Also update tenant status from trial to active? Keep trial until 14d but mark setup complete
@@ -373,61 +389,84 @@ public class WizardService : IWizardService
         await _db.SaveChangesAsync(ct);
     }
 
-    private async Task SaveAcademicYearAsync(long tenantId, AcademicYearDto dto, CancellationToken ct)
+    // Steps 3 to 5 create real academic_years, terms, grades and class_streams rows through the
+    // Core services. They used to store the year's name as its id (2026) in settings, keep
+    // terms only as JSON, and create grades and streams pointing at academic year id 2026.
+
+    private async Task SaveAcademicYearAsync(long tenantId, long userId, AcademicYearDto dto, CancellationToken ct)
     {
-        // Check if academic year exists, else create Grade placeholder for year tracking? For V1 we use Grades table AcademicYearId as int year
-        // Real implementation would have AcademicYear table - for demo we store in TenantSettings + create a dummy record in Grades? No, we store in settings JSON and assume AcademicYear table exists elsewhere
-        // For simplicity, ensure TenantSettings current year
-        var settings = await _db.TenantSettings.FirstOrDefaultAsync(ts=>ts.TenantId==tenantId, ct);
-        if (settings==null)
+        var name = dto.Name.Trim();
+        var existing = await _db.Set<AcademicYear>().FirstOrDefaultAsync(y => y.TenantId == tenantId && y.Name == name, ct);
+        long yearId;
+        if (existing is null)
         {
-            settings = new TenantSettings { TenantId=tenantId, CurrentAcademicYearId = int.Parse(dto.Name), PrimaryColor="#0F153A" };
-            _db.TenantSettings.Add(settings);
+            yearId = (await _calendar.CreateYearAsync(tenantId, userId, new LearnCloud.Core.DTOs.CreateAcademicYearRequest(name, dto.StartDate, dto.EndDate, IsCurrent: true), ct)).Id;
         }
         else
         {
-            if (int.TryParse(dto.Name, out var yearId)) settings.CurrentAcademicYearId = yearId;
+            yearId = (await _calendar.UpdateYearAsync(tenantId, userId, existing.Id, new LearnCloud.Core.DTOs.UpdateAcademicYearRequest(name, dto.StartDate, dto.EndDate), ct)).Id;
+            await _calendar.SetCurrentYearAsync(tenantId, userId, yearId, ct);
         }
-        await _db.SaveChangesAsync(ct);
-    }
 
-    private async Task SaveTermsAsync(long tenantId, TermsSetupDto dto, CancellationToken ct)
-    {
-        // For V1, store terms as JSON in TenantSettings? Real would have Terms table
-        // We'll just update settings with terms json and also create dummy entries via Grade? Simplified: no-op but we log counts
         var settings = await _db.TenantSettings.FirstOrDefaultAsync(ts=>ts.TenantId==tenantId, ct);
-        if (settings!=null)
+        if (settings==null)
         {
-            settings.FeaturesJson = JsonSerializer.Serialize(new { terms = dto.Terms });
+            settings = new TenantSettings { TenantId=tenantId, PrimaryColor="#0F153A" };
+            _db.TenantSettings.Add(settings);
         }
+        settings.CurrentAcademicYearId = checked((int)yearId);
         await _db.SaveChangesAsync(ct);
     }
 
-    private async Task SaveClassesAndStreamsAsync(long tenantId, ClassesAndStreamsDto dto, CancellationToken ct)
+    private async Task<long> WizardYearIdAsync(long tenantId, CancellationToken ct) =>
+        await _db.Set<AcademicYear>().Where(y => y.TenantId == tenantId && y.IsCurrent).Select(y => (long?)y.Id).FirstOrDefaultAsync(ct)
+        ?? throw new InvalidOperationException("Save the academic year step first.");
+
+    private async Task SaveTermsAsync(long tenantId, long userId, TermsSetupDto dto, CancellationToken ct)
     {
-        // Clear existing? For wizard first run, we can upsert
-        foreach (var cls in dto.Classes)
+        var yearId = await WizardYearIdAsync(tenantId, ct);
+        var terms = dto.Terms.Select(t => new LearnCloud.Core.DTOs.CreateTermRequest(t.Name, t.TermNumber, t.StartDate, t.EndDate, t.IsCurrent)).ToList();
+        await _calendar.ReplaceTermsAsync(tenantId, userId, yearId, terms, ct);
+    }
+
+    private async Task SaveClassesAndStreamsAsync(long tenantId, long userId, ClassesAndStreamsDto dto, CancellationToken ct)
+    {
+        var yearId = await WizardYearIdAsync(tenantId, ct);
+        for (var i = 0; i < dto.Classes.Count; i++)
         {
-            var existingGrade = await _db.Set<Grade>().FirstOrDefaultAsync(g=>g.TenantId==tenantId && g.Code==cls.GradeCode && !g.IsDeleted, ct);
-            if (existingGrade==null)
-            {
-                existingGrade = new Grade { TenantId=tenantId, Name=cls.GradeName, Code=cls.GradeCode, AcademicYearId=2026 };
-                _db.Set<Grade>().Add(existingGrade);
-                await _db.SaveChangesAsync(ct);
-            }
+            var cls = dto.Classes[i];
+            var code = cls.GradeCode.Trim().ToUpperInvariant();
+            var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.TenantId == tenantId && g.AcademicYearId == yearId && g.Code == code, ct);
+            var gradeId = grade is null
+                ? (await _classes.CreateGradeAsync(tenantId, userId, new LearnCloud.Core.DTOs.CreateGradeRequest(yearId, cls.GradeName, code, i + 1), ct)).Id
+                : (await _classes.UpdateGradeAsync(tenantId, userId, grade.Id, new LearnCloud.Core.DTOs.UpdateGradeRequest(cls.GradeName, code, i + 1, grade.IsActive), ct)).Id;
 
             foreach (var stream in cls.Streams)
             {
-                var existingStream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s=>s.TenantId==tenantId && s.GradeId==existingGrade.Id && s.Name==stream.Name && !s.IsDeleted, ct);
-                if (existingStream==null)
-                {
-                    var newStream = new ClassStream { TenantId=tenantId, GradeId=existingGrade.Id, Name=stream.Name, Capacity=stream.Capacity, AcademicYearId=2026 };
-                    _db.Set<ClassStream>().Add(newStream);
-                }
+                var name = stream.Name.Trim();
+                var existing = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.TenantId == tenantId && s.GradeId == gradeId && s.Name == name, ct);
+                if (existing is null)
+                    await _classes.CreateStreamAsync(tenantId, userId, gradeId, new LearnCloud.Core.DTOs.CreateStreamRequest(name, stream.Capacity), ct);
+                else
+                    await _classes.UpdateStreamAsync(tenantId, userId, existing.Id, new LearnCloud.Core.DTOs.UpdateStreamRequest(name, stream.Capacity), ct);
             }
         }
-        await _db.SaveChangesAsync(ct);
     }
+
+    // Departments, grading scale and preferences are kept as JSON in tenant settings. Each
+    // step writes its own key: steps 7 and 9 used to overwrite the same field, and step 8
+    // replaced the whole features JSON.
+    private static string MergeJson(string? json, string key, object? value)
+    {
+        JsonObject root;
+        try { root = (string.IsNullOrWhiteSpace(json) ? null : JsonNode.Parse(json) as JsonObject) ?? new JsonObject(); }
+        catch (JsonException) { root = new JsonObject(); }
+        root[key] = JsonSerializer.SerializeToNode(value);
+        return root.ToJsonString();
+    }
+
+    private static T? ReadStep<T>(object data) where T : class =>
+        data is JsonElement element ? element.Deserialize<T>(new JsonSerializerOptions(JsonSerializerDefaults.Web)) : data as T;
 
     private async Task SaveSubjectsAsync(long tenantId, SubjectsDto dto, CancellationToken ct)
     {
@@ -453,8 +492,7 @@ public class WizardService : IWizardService
         var settings = await _db.TenantSettings.FirstOrDefaultAsync(ts=>ts.TenantId==tenantId, ct);
         if (settings!=null)
         {
-            var depsJson = JsonSerializer.Serialize(dto);
-            settings.BrandingJson = depsJson; // reuse field
+            settings.BrandingJson = MergeJson(settings.BrandingJson, "departmentsAndRoles", dto);
         }
         await _db.SaveChangesAsync(ct);
     }
@@ -465,7 +503,7 @@ public class WizardService : IWizardService
         var settings = await _db.TenantSettings.FirstOrDefaultAsync(ts=>ts.TenantId==tenantId, ct);
         if (settings!=null)
         {
-            settings.FeaturesJson = JsonSerializer.Serialize(new { gradingScale = dto });
+            settings.FeaturesJson = MergeJson(settings.FeaturesJson, "gradingScale", dto);
         }
         await _db.SaveChangesAsync(ct);
     }
@@ -475,10 +513,11 @@ public class WizardService : IWizardService
         var settings = await _db.TenantSettings.FirstOrDefaultAsync(ts=>ts.TenantId==tenantId, ct);
         if (settings==null)
         {
-            settings = new TenantSettings { TenantId=tenantId, TimeZone=dto.WeekStart, PrimaryColor="#0F153A" };
+            // This used to put the week start day into the time zone.
+            settings = new TenantSettings { TenantId=tenantId, PrimaryColor="#0F153A" };
             _db.TenantSettings.Add(settings);
         }
-        settings.BrandingJson = JsonSerializer.Serialize(dto);
+        settings.BrandingJson = MergeJson(settings.BrandingJson, "preferences", dto);
         await _db.SaveChangesAsync(ct);
     }
 

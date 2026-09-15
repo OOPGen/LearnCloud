@@ -17,6 +17,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\LearnCloud.MultiTenancy\LearnCloud.MultiTenancy.csproj" />
+    <!-- Academic years, terms, grades and streams are created through the Core services. -->
+    <ProjectReference Include="..\LearnCloud.Core\LearnCloud.Core.csproj" />
   </ItemGroup>
 
 </Project>

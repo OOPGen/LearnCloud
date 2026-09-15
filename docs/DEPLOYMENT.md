@@ -170,7 +170,9 @@ node scripts/smoke-test.mjs https://learncloud-app-staging.<account>.workers.dev
 ```
 
 The full run checks registration, sign-in, the refresh cookie flags, cookie refresh,
-Subjects create/list/delete, validation, and that one school cannot see another's data.
+Subjects create/list/delete, validation, setting up a year, term and class, enrolling a
+student with a guardian and recording them leaving, and that one school cannot see or use
+another's subjects, students, guardians or classes.
 
 ## 6. Rollback
 
