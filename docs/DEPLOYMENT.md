@@ -1,13 +1,18 @@
-# Deploying LearnCloud: Railway and Cloudflare Pages
+# Deploying LearnCloud: Railway and Cloudflare Workers
 
 ```
-Browser ──► Cloudflare Pages ──────────────► Railway: LearnCloud API ──► Railway: PostgreSQL
-            static web app                   Docker image, port $PORT
-            /api/* Pages Function (proxy)    migrations run before each deploy
+Browser ──► Cloudflare Worker: learncloud-app ──► Railway: LearnCloud API ──► Railway: PostgreSQL
+            static web app                        Docker image, port $PORT
+            /api/* proxy (worker/apiProxy.js)     migrations run before each deploy
+
+Browser ──► Cloudflare Worker: learncloud          (marketing site, static files only)
 ```
 
-- **Web app** (`src/LearnCloud.Web`): static files on Cloudflare Pages. Every `/api/*`
-  request goes through the Pages Function in `functions/api/[[path]].js` to the API.
+- **Web app** (`src/LearnCloud.Web`): a Cloudflare Worker with static assets, configured by
+  `src/LearnCloud.Web/wrangler.jsonc`. Every `/api/*` request goes through
+  `worker/apiProxy.js` to the API.
+- **Marketing site** (`marketing-site`): a separate static Worker, configured by
+  `marketing-site/wrangler.jsonc`.
 - **API** (`src/LearnCloud.Api`): built from `deployment/docker/Dockerfile.api` by Railway,
   configured by `railway.json` at the repository root.
 - **Database**: Railway PostgreSQL. The schema comes from the EF Core migrations, applied by
@@ -67,49 +72,92 @@ on the Railway plan. Test a restore into a staging environment before go-live.
 
 ---
 
-## 2. Cloudflare Pages: web app
+## 2. Cloudflare Worker: web app (`learncloud-app`)
 
-1. Workers & Pages → Create → Pages → Connect to Git → this repository.
-2. Build settings:
-   - Production branch: `main`
-   - Framework preset: `None`
-   - Root directory: `src/LearnCloud.Web`
-   - Build command: `npm ci && npm run build`
-   - Build output directory: `dist`
-3. Variables (Settings → Variables and Secrets), for **Production** and, with staging values,
-   **Preview**:
+`src/LearnCloud.Web/wrangler.jsonc` defines the Worker:
+
+- static files from `dist`, with unknown paths answered by `index.html` so deep links work;
+- only `/api/*` runs the Worker code, which proxies to `API_ORIGIN`;
+- `public/_headers` sets the security headers and asset caching of the static files.
+
+### Deploy
+
+Requires Node 22+ (Wrangler 4.131 is pinned in `package.json`).
+
+```bash
+cd src/LearnCloud.Web
+npm ci
+npx wrangler login          # once per machine
+npm run deploy:check        # builds and bundles, deploys nothing
+npm run deploy              # builds and deploys learncloud-app
+```
+
+The first deploy creates the Worker at `https://learncloud-app.<account>.workers.dev`.
+
+`VITE_ROOT_DOMAIN` is baked into the build, so set it in the shell that runs `npm run deploy`
+(or in `.env.production.local`) when a platform domain is in use.
+
+### Variables
+
+Set on the Worker (Workers & Pages → learncloud-app → Settings → Variables and Secrets).
+`keep_vars` in `wrangler.jsonc` keeps them across deploys.
 
 | Variable | Type | Value |
 |---|---|---|
 | `API_ORIGIN` | text | The Railway API domain, e.g. `https://learncloud-api-production.up.railway.app` |
-| `API_PROXY_SECRET` | secret | Same value as `Proxy__SharedSecret` on Railway |
-| `ROOT_DOMAIN` | text | `learncloud.co.zw` (omit on preview hosts) |
-| `VITE_ROOT_DOMAIN` | text, build time | `learncloud.co.zw` (omit on preview hosts) |
-| `NODE_VERSION` | text, build time | `20` |
+| `API_PROXY_SECRET` | secret | Same value as `Proxy__SharedSecret` on Railway (`npx wrangler secret put API_PROXY_SECRET`) |
+| `ROOT_DOMAIN` | text | `learncloud.co.zw`, only once school subdomains are routed to this Worker |
 
-`functions/` sits inside the root directory, so Pages deploys the proxy automatically.
-`public/_headers` sets the web app's security headers and asset caching.
+Until `API_ORIGIN` is set, the app loads but every `/api` call returns
+`502 API not configured`, so nobody can sign in.
+
+### Deploying from GitHub instead (optional)
+
+Workers & Pages → learncloud-app → Settings → Build → Connect: repository
+`OOPGen/LearnCloud`, branch `main`, root directory `src/LearnCloud.Web`, build command
+`npm ci && npm run build`, deploy command `npx wrangler deploy`. Cloudflare then deploys
+every push to `main` without waiting for the CI workflow, so merge to `main` only through
+branches whose CI has passed.
 
 ### Domains and school addresses
 
-- Add the main custom domain (for example `app.learncloud.co.zw`) to the Pages project.
+- Add the main hostname (for example `app.learncloud.co.zw`) under Settings → Domains &
+  Routes → Custom Domain. The zone must be on Cloudflare.
 - On a host without a school subdomain, the sign-in page asks for the **school code**.
 - On `<school>.learncloud.co.zw` the school comes from the address, and the proxy forwards it
-  so the API rejects a token from another school. Cloudflare Pages custom domains do not
-  accept a wildcard, so per-school subdomains need either a custom domain per school or a
-  Worker route on `*.learncloud.co.zw/*` in front of Pages. Until then, schools use the
-  main domain with their school code.
+  so the API rejects a token from another school. Custom Domains do not accept wildcards;
+  per-school subdomains need a Worker **route** `*.learncloud.co.zw/*` plus a proxied
+  wildcard DNS record, and `ROOT_DOMAIN` / `VITE_ROOT_DOMAIN` set. Check that hostnames with
+  their own Worker (the marketing site's `www`) still reach it. Until then, schools use the
+  main hostname with their school code.
 
 ---
 
-## 3. Staging and production
+## 3. Cloudflare Worker: marketing site (`learncloud`)
+
+`marketing-site/public` is served as static files. The site routes pages such as `/pricing`
+in the browser, so `wrangler.jsonc` answers unknown paths with `index.html`.
+
+```bash
+cd marketing-site
+npx wrangler@4.131.2 deploy
+```
+
+Before relying on it, see `marketing-site/README.md`: the demo form posts to
+`https://api.learncloud.co.zw/api/demo-requests`, which the API does not provide yet, and
+the analytics ID is a placeholder.
+
+---
+
+## 4. Staging and production
 
 - **Railway:** create a `staging` environment in the project (its own database and variables).
-- **Cloudflare:** preview deployments use the Preview variables; point their `API_ORIGIN` at
-  the staging API.
+- **Cloudflare:** deploy a separate staging Worker with
+  `npx wrangler deploy --name learncloud-app-staging` (after `npm run build`), and point its
+  `API_ORIGIN` at the staging API.
 - Keep secrets different between environments.
 
-## 4. Verify a deploy
+## 5. Verify a deploy
 
 From a machine with Node 18+:
 
@@ -118,20 +166,21 @@ From a machine with Node 18+:
 node scripts/smoke-test.mjs https://app.learncloud.co.zw
 
 # Full flow, STAGING ONLY (registers two throwaway schools):
-node scripts/smoke-test.mjs https://<staging-pages-host> --full
+node scripts/smoke-test.mjs https://learncloud-app-staging.<account>.workers.dev --full
 ```
 
 The full run checks registration, sign-in, the refresh cookie flags, cookie refresh,
 Subjects create/list/delete, validation, and that one school cannot see another's data.
 
-## 5. Rollback
+## 6. Rollback
 
 - **API:** Railway → Deployments → choose the last good deployment → Redeploy. Migrations
   only move forward: rolling code back past a schema change can fail. Ship schema changes
   in backward-compatible steps (add columns first, remove them in a later release).
-- **Web:** Cloudflare Pages → Deployments → Rollback to a previous deployment.
+- **Web app and marketing site:** Workers & Pages → the Worker → Deployments → Rollback, or
+  `npx wrangler rollback` from the Worker's folder.
 
-## 6. Security notes
+## 7. Security notes
 
 - The Railway domain is publicly reachable, so anyone can bypass Cloudflare and call the API
   directly. Tenant isolation, authentication and validation all live in the API and still

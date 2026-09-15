@@ -1,22 +1,22 @@
-// Cloudflare Pages Function: proxies every /api/* request to the LearnCloud API on Railway.
+// Proxies every /api/* request from the web app's Worker to the LearnCloud API on Railway.
 //
 // Why a proxy rather than calling Railway from the browser:
 // - The refresh token is a SameSite=Strict, __Host- cookie. It is only sent to the
 //   origin that set it, so the API must share the web app's origin.
 // - No CORS configuration is needed for the web app.
 //
-// Environment variables (Pages project > Settings > Variables):
+// Worker variables (Workers & Pages > learncloud-app > Settings > Variables and Secrets):
 //   API_ORIGIN   required, e.g. https://learncloud-api-production.up.railway.app
 //   ROOT_DOMAIN  optional, e.g. learncloud.co.zw; enables school-from-subdomain
 //   API_PROXY_SECRET  recommended; the same value as Proxy__SharedSecret on the API, so
-//                     the API can trust the client IP this function reports
+//                     the API can trust the client IP this proxy reports
 
 const RESERVED_SUBDOMAINS = new Set(['www', 'app', 'api', 'admin', 'platform']);
 
 // Headers Cloudflare adds that the API has no use for.
 const STRIPPED_HEADERS = [
   'host', 'cf-connecting-ip', 'cf-ipcountry', 'cf-ray', 'cf-visitor', 'cdn-loop', 'x-real-ip',
-  // Only this function may set these; see TrustedProxyClientIpMiddleware in the API.
+  // Only this proxy may set these; see TrustedProxyClientIpMiddleware in the API.
   'x-learncloud-proxy-key', 'x-learncloud-client-ip',
 ];
 
@@ -29,10 +29,10 @@ export function tenantSlugFromHost(hostname, rootDomain) {
   return /^[a-z0-9-]{3,50}$/.test(slug) && !RESERVED_SUBDOMAINS.has(slug) ? slug : null;
 }
 
-export async function onRequest({ request, env }) {
+export async function proxyApiRequest(request, env) {
   if (!env.API_ORIGIN) {
     return Response.json(
-      { title: 'API not configured', detail: 'Set API_ORIGIN for this Pages environment.' },
+      { title: 'API not configured', detail: 'Set API_ORIGIN on the learncloud-app Worker.' },
       { status: 502, headers: { 'content-type': 'application/problem+json' } },
     );
   }

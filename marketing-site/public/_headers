@@ -1,0 +1,8 @@
+# Response headers for the marketing site (Cloudflare Workers static assets).
+# No Content-Security-Policy yet: the page loads React, Tailwind and analytics from CDNs
+# and uses inline scripts. Add one when those are bundled.
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Strict-Transport-Security: max-age=31536000

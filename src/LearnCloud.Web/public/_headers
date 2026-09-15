@@ -1,5 +1,6 @@
-# Cloudflare Pages response headers for the web app. API responses get their own
-# headers from the API's SecurityHeadersMiddleware.
+# Response headers for the web app's static files (Cloudflare Workers static assets).
+# API responses come through the Worker and get their own headers from the API's
+# SecurityHeadersMiddleware.
 /*
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY

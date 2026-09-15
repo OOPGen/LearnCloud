@@ -6,7 +6,7 @@
 //                                                   runs the Subjects and tenant isolation
 //                                                   flow. STAGING ONLY: it writes data.
 //
-// <base-url> is either the web app (Cloudflare Pages, which proxies /api) or the API itself.
+// <base-url> is either the web app (its Cloudflare Worker proxies /api) or the API itself.
 // Requires Node 18+. Exits non-zero when any check fails.
 
 const [, , rawBase, ...flags] = process.argv;

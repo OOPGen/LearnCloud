@@ -47,10 +47,10 @@ if (!builder.Environment.IsDevelopment())
     builder.Logging.AddJsonConsole(options => options.IncludeScopes = true);
 }
 
-// Behind Railway's edge (and the Cloudflare Pages proxy) the connection comes from a
+// Behind Railway's edge (and the Cloudflare Worker proxy) the connection comes from a
 // proxy. Without this, every request appears to come from the proxy's address: rate
 // limits would be shared by all users and Request.IsHttps would be false.
-// ForwardLimit covers "client -> Cloudflare function -> Railway edge". Anyone who can
+// ForwardLimit covers "client -> Cloudflare Worker -> Railway edge". Anyone who can
 // reach the API directly can still spoof X-Forwarded-For; see docs/DEPLOYMENT.md.
 var forwardedHeadersEnabled = builder.Configuration.GetValue("ForwardedHeaders:Enabled", false);
 if (forwardedHeadersEnabled)
@@ -277,7 +277,7 @@ app.UseExceptionHandler(appBuilder =>
 
 if (forwardedHeadersEnabled)
     app.UseForwardedHeaders();
-// After forwarded headers, before rate limiting: a request from the Cloudflare Pages proxy
+// After forwarded headers, before rate limiting: a request from the Cloudflare Worker proxy
 // carrying the shared secret gets its real client IP.
 app.UseMiddleware<TrustedProxyClientIpMiddleware>();
 
@@ -308,7 +308,7 @@ app.MapControllers().RequireCors("tenant");
 // Liveness: the process is up. Readiness: the database answers.
 app.MapGet("/health", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow, environment = app.Environment.EnvironmentName }))
    .RequireCors("tenant");
-// Readiness is also served under /api so it can be checked through the Cloudflare Pages
+// Readiness is also served under /api so it can be checked through the Cloudflare Worker
 // proxy, which only forwards /api/* (everything else there is the web app).
 foreach (var readinessPath in new[] { "/health/ready", "/api/health" })
 {

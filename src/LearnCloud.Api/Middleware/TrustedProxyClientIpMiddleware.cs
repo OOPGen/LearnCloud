@@ -4,15 +4,15 @@ using System.Text;
 
 namespace LearnCloud.Api.Middleware;
 
-// Sets the connection's remote IP from the Cloudflare Pages proxy's X-LearnCloud-Client-IP
+// Sets the connection's remote IP from the Cloudflare Worker proxy's X-LearnCloud-Client-IP
 // header, but only when the request also carries the shared proxy secret.
 //
 // Rate limiting and security logs key on the client IP. Behind Cloudflare and Railway the
 // TCP peer is a proxy, and X-Forwarded-For can be supplied by anyone who reaches the API
-// directly. A header trusted only with a secret known to the Pages function cannot be
+// directly. A header trusted only with a secret known to the Worker proxy cannot be
 // spoofed that way, whatever the edge in between does to X-Forwarded-For.
 //
-// Configure Proxy:SharedSecret on the API and API_PROXY_SECRET on the Pages project to
+// Configure Proxy:SharedSecret on the API and API_PROXY_SECRET on the web app Worker to
 // the same random value. Without it the middleware does nothing.
 public sealed class TrustedProxyClientIpMiddleware
 {

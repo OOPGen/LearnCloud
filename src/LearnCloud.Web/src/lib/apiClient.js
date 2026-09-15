@@ -3,7 +3,7 @@
 // - The access token lives in memory only, never in localStorage.
 // - The refresh token is an HttpOnly, Secure, SameSite=Strict cookie set by the API.
 // - All calls use relative /api paths. Locally Vite proxies them to the API; on
-//   Cloudflare Pages the function in functions/api/[[path]].js does. Keeping the API
+//   Cloudflare the web app's Worker does (worker/apiProxy.js). Keeping the API
 //   same-origin is what lets the SameSite=Strict refresh cookie work at all.
 
 let accessToken = null;
@@ -49,7 +49,7 @@ export class ApiError extends Error {
 /**
  * The school slug from the host name, e.g. "petra" for petra.learncloud.co.zw.
  * VITE_ROOT_DOMAIN names the platform domain. Returns null on the bare domain,
- * reserved subdomains, localhost and preview hosts such as *.pages.dev, where the
+ * reserved subdomains, localhost and hosts such as *.workers.dev, where the
  * user types the school instead.
  */
 export function getTenantSlugFromHost(hostname = window.location.hostname) {

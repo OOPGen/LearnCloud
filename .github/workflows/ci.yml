@@ -1,8 +1,9 @@
 # Continuous integration for LearnCloud.
 #
-# Deployments are not done from here: Railway (API) and Cloudflare Pages (web) deploy
-# from GitHub themselves. Turn on "Wait for CI" in the Railway service settings so the
-# API only deploys commits that pass this workflow. See docs/DEPLOYMENT.md.
+# Deployments are not done from here. Railway deploys the API from GitHub; turn on "Wait
+# for CI" in the Railway service settings so it only deploys commits that pass this
+# workflow. The web app and marketing site are Cloudflare Workers, deployed with Wrangler.
+# See docs/DEPLOYMENT.md.
 
 name: CI
 
@@ -85,7 +86,7 @@ jobs:
         run: docker build --file deployment/docker/Dockerfile.api --tag learncloud-api:ci .
 
   web:
-    name: Web build
+    name: Web and marketing Workers
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -96,14 +97,20 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
           cache-dependency-path: src/LearnCloud.Web/package-lock.json
 
       - run: npm ci
       - run: npm run build
-      - name: Pages Function parses
-        run: node --check "functions/api/[[path]].js"
+      - name: Web app Worker bundles (dry run, nothing is deployed)
+        run: npx wrangler deploy --dry-run
+        env:
+          WRANGLER_SEND_METRICS: "false"
+      - name: Marketing site Worker bundles (dry run, nothing is deployed)
+        run: npx wrangler deploy --dry-run --config ../../marketing-site/wrangler.jsonc
+        env:
+          WRANGLER_SEND_METRICS: "false"
 
   secrets:
     name: Secret scan (full history)

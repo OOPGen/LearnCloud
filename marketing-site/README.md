@@ -36,7 +36,9 @@
 
 ## How to Deploy
 
-Upload folder to https://learncloud.co.zw/, configure DEMO_ENDPOINT window.DEMO_ENDPOINT to CRM inbox (e.g. HubSpot, Google Sheet webhook, or hello@learncloud.co.zw receives via API). Replace gtag ID G-LEARNCLD with real GA4. OG image at /og-image.png — replace with real 1200x630 school image.
+The site is the Cloudflare Worker `learncloud`: `public/` holds the files and `wrangler.jsonc` serves unknown paths (such as /pricing) from index.html. Deploy from this folder with `npx wrangler@4.131.2 deploy` (docs/DEPLOYMENT.md, section 3).
+
+Before launch: the API has no demo-requests endpoint yet, so configure DEMO_ENDPOINT window.DEMO_ENDPOINT to CRM inbox (e.g. HubSpot, Google Sheet webhook, or hello@learncloud.co.zw receives via API). Replace gtag ID G-LEARNCLD with real GA4. OG image at /og-image.png — replace with real 1200x630 school image.
 
 ## Performance
 

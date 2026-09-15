@@ -1,0 +1,12 @@
+// Cloudflare Worker for the LearnCloud marketing site: static files only.
+// Deploy from this folder with `npx wrangler@4.131.2 deploy`. See docs/DEPLOYMENT.md, section 3.
+{
+  "name": "learncloud",
+  "compatibility_date": "2026-09-11",
+  "assets": {
+    "directory": "./public",
+    // The site routes pages such as /pricing in the browser, so they must return index.html.
+    "not_found_handling": "single-page-application"
+  },
+  "observability": { "enabled": true }
+}
