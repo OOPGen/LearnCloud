@@ -196,7 +196,8 @@ export default function AppShell({ children, title, description, actions, breadc
       `}>
         {/* Logo + Collapse */}
         <div className="h-14 flex items-center gap-2 px-4 border-b border-white/10 shrink-0">
-          <div className="w-8 h-8 rounded-lg bg-white text-primary-900 grid place-items-center font-bold text-sm shrink-0">LC</div>
+          {/* The logo is artwork on white, so it sits on a white tile against the dark sidebar. */}
+          <img src="/logo-mark.png" alt="" className="w-8 h-8 rounded-lg bg-white object-contain p-0.5 shrink-0" />
           {!sidebarCollapsed && (
             <>
               <div className="flex-1 min-w-0">
@@ -290,7 +291,7 @@ export default function AppShell({ children, title, description, actions, breadc
           <div className="absolute inset-0 bg-primary-950/60 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)} />
           <div className="relative w-[300px] bg-primary-950 text-white/70 flex flex-col h-full">
             <div className="h-14 flex items-center gap-2 px-4 border-b border-white/10">
-              <div className="w-8 h-8 rounded-lg bg-white text-primary-900 grid place-items-center font-bold text-sm">LC</div>
+              <img src="/logo-mark.png" alt="" className="w-8 h-8 rounded-lg bg-white object-contain p-0.5" />
               <div className="flex-1">
                 <div className="font-bold text-white text-[14px]">LearnCloud</div>
                 <div className="text-[11px] text-white/50">School management</div>

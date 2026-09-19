@@ -7,6 +7,8 @@
 <meta name="description" content="LearnCloud replaces registers, spreadsheets and WhatsApp groups with one calm dashboard for Zimbabwean independent schools 150–2,000 learners. Built in Bulawayo. Clear pricing, 14-day trial no card.">
 <meta name="theme-color" content="#0F153A">
 <link rel="canonical" id="canonical-link" href="https://learncloud.co.zw/">
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta property="og:site_name" content="LearnCloud">
 <meta property="og:type" id="og-type" content="website">
 <meta property="og:url" id="og-url" content="https://learncloud.co.zw/">
@@ -128,7 +130,7 @@ function Header({currentPath, navigate}){
     h('div',{className:"mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between"},
       h('div',{className:"flex items-center gap-2"},
         h('button',{onClick:()=>navigate('/'),className:"flex items-center gap-2", 'aria-label':"LearnCloud home"},
-          h('div',{className:"w-8 h-8 rounded-md bg-primary-800 flex items-center justify-center text-white font-bold text-sm"},"LC"),
+          h('img',{src:"/logo-mark.png",alt:"",className:"w-9 h-9 object-contain"}),
           h('span',{className:"font-bold tracking-tight text-primary-800"},"LearnCloud")
         ),
         h('span',{className:"ml-2 hidden lg:inline-flex text-xs px-2 py-0.5 rounded-full bg-secondary-100 text-secondary-700"},"Bulawayo • 150–2,000 learners")
@@ -161,7 +163,7 @@ function Footer({navigate}){
       h('div',{className:"grid md:grid-cols-4 gap-8"},
         h('div',null,
           h('div',{className:"flex items-center gap-2 text-white"},
-            h('div',{className:"w-8 h-8 rounded-md bg-white text-primary-900 grid place-items-center font-bold text-sm"},"LC"),
+            h('img',{src:"/logo-mark.png",alt:"",className:"w-8 h-8 rounded-md bg-white object-contain p-0.5"}),
             h('span',{className:"font-bold"},"LearnCloud")
           ),
           h('p',{className:"mt-3 text-sm leading-relaxed text-white/60"},"For independent schools who want fees collected, reports ready, parents informed — before lunch. Built in Bulawayo. Palette #0F153A."),

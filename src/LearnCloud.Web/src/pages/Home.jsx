@@ -6,7 +6,9 @@ export default function Home() {
       <header className="bg-white border-b border-neutral-200 sticky top-0 z-30 backdrop-blur bg-white/90">
         <div className="max-w-6xl mx-auto flex justify-between items-center h-14 px-4 sm:px-6">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary-800 text-white grid place-items-center font-bold text-sm">LC</div>
+            {/* The supplied logo stacks the mark over the wordmark, which is illegible in a
+                56 px header, so headers pair the mark with the name as text. */}
+            <img src="/logo-mark.png" alt="" className="w-9 h-9 object-contain" />
             <span className="font-bold tracking-tight text-primary-800">LearnCloud</span>
             <span className="ml-2 hidden md:inline-flex text-[11px] px-2 py-0.5 rounded-full bg-secondary-100 text-secondary-700 font-medium">Bulawayo • Premium Enterprise</span>
           </div>
