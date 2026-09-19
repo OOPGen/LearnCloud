@@ -77,7 +77,10 @@ export default function LoginSkewed() {
   const location = useLocation();
   // On petra.learncloud.co.zw the school comes from the address; elsewhere the user types it.
   const hostSlug = getTenantSlugFromHost();
-  const [isLogin, setIsLogin] = useState(true);
+  // Links from emails (verification, password reset) pass the school code and email along,
+  // and the home page's Register button arrives with ?mode=register.
+  const linkParams = new URLSearchParams(location.search);
+  const [isLogin, setIsLogin] = useState(linkParams.get('mode') !== 'register');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const [showForgot, setShowForgot] = useState(false);
@@ -85,8 +88,6 @@ export default function LoginSkewed() {
   const [forgotSent, setForgotSent] = useState(false);
   const [toast, setToast] = useState(null);
 
-  // Links from emails (verification, password reset) pass the school code and email along.
-  const linkParams = new URLSearchParams(location.search);
   const [loginForm, setLoginForm] = useState({ school: linkParams.get('school') || '', email: linkParams.get('email') || '', password: '' });
   const [registerForm, setRegisterForm] = useState({ school: '', slug: '', slugEdited: false, name: '', email: '', phone: '', city: 'Bulawayo', band: '150-300', password: '' });
 
