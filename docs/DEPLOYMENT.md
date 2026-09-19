@@ -5,14 +5,16 @@ Browser ──► Cloudflare Worker: learncloud-app ──► Railway: LearnClou
             static web app                        Docker image, port $PORT
             /api/* proxy (worker/apiProxy.js)     migrations run before each deploy
 
-Browser ──► Cloudflare Worker: learncloud          (marketing site, static files only)
+Browser ──► Cloudflare Worker: learncloud ──────► Railway: LearnCloud API
+            marketing site (static files)         (only the demo and contact form)
 ```
 
 - **Web app** (`src/LearnCloud.Web`): a Cloudflare Worker with static assets, configured by
   `src/LearnCloud.Web/wrangler.jsonc`. Every `/api/*` request goes through
   `worker/apiProxy.js` to the API.
-- **Marketing site** (`marketing-site`): a separate static Worker, configured by
-  `marketing-site/wrangler.jsonc`.
+- **Marketing site** (`marketing-site`): a separate Worker, configured by
+  `marketing-site/wrangler.jsonc`: static files, plus `worker/index.js`, which forwards the
+  demo and contact forms to the API.
 - **API** (`src/LearnCloud.Api`): built from `deployment/docker/Dockerfile.api` by Railway,
   configured by `railway.json` at the repository root.
 - **Database**: Railway PostgreSQL. The schema comes from the EF Core migrations, applied by
@@ -48,11 +50,32 @@ Set these on the API service (Variables tab). Generate secrets with a password m
 | `Jwt__Secret` | 48+ random characters | Required. Changing it signs everyone out. |
 | `Jwt__Issuer` | `https://api.learncloud.co.zw` | Must stay stable once users have tokens. |
 | `Jwt__Audience` | `learncloud` | Same. |
-| `Proxy__SharedSecret` | 32+ random characters | Must equal `API_PROXY_SECRET` on Cloudflare. Lets the API trust the client IP the proxy reports, for rate limiting. |
-| `Jobs__Enabled` | `true` | Scheduled dunning and communication rules. Set `false` on extra replicas. |
+| `Proxy__SharedSecret` | 32+ random characters | Must equal `API_PROXY_SECRET` on both Cloudflare Workers. Lets the API trust the client IP the proxy reports, for rate limiting. |
+| `Proxy__RequireSecret` | `true` | Refuses requests that did not come through the Workers (403), so the Railway address cannot be used directly. Health checks stay open. Needs `Proxy__SharedSecret`. |
+| `App__PublicUrl` | `https://app.learncloud.co.zw` | Required. The web app's address, used in links in emails (password reset, email confirmation). Until the custom domain is set up, use the Worker's address, e.g. `https://learncloud-app.<account>.workers.dev`. Without it the API logs a warning and the links do not work. |
+| `Email__Provider` | `Resend` | `Resend` (HTTPS API), `Smtp`, or `Log` (sends nothing; the API warns at startup). Railway blocks outbound SMTP below the Pro plan, so use Resend there. |
+| `Email__FromAddress` | `noreply@learncloud.co.zw` | Sender address on a domain verified with the provider. |
+| `Email__FromName` | `LearnCloud` | Optional. |
+| `Email__Resend__ApiKey` | secret | From resend.com, with sending access for the verified domain. |
+| `Email__Smtp__Host`, `__Port`, `__Username`, `__Password`, `__Security` | only for `Smtp` | `Security`: `Auto`, `StartTls` or `SslOnConnect`. |
+| `Sales__NotificationEmail` | `sales@learncloud.co.zw` | Receives demo requests and contact messages from the marketing site. Without it they are only stored (`GET /api/platform/enquiries`). |
+| `Billing__ContactEmail` | `billing@learncloud.co.zw` | Named in read-only banners and billing emails. |
+| `Billing__EnforceReadOnly` | `true` | Suspended, expired, cancelled and archived schools can read and export but not change records. Set `false` to let every school keep editing, e.g. while payments are not set up yet (see below). |
+| `Jobs__Enabled` | `true` | Runs the background job worker (emails, message batches) and the schedules (daily dunning, hourly communication rules). Safe on every replica. |
 | `Cors__AllowedOrigins__0` | optional | Only for other browser clients; the web app does not need CORS. |
 | `AI__OpenAI__ApiKey` | optional | Without it AI features use the rule-based provider. |
-| `Messaging__Sms__ApiKey`, `Messaging__Email__SmtpHost`, ... | optional | Needed only to actually send SMS and email. |
+
+SMS is not connected to a provider yet: SMS message batches fail with "SMS is not available
+yet" instead of pretending to send.
+
+#### Trials and read-only mode
+
+New schools get a 14-day trial. The daily dunning job emails reminders on days 7 and 12
+and, when the trial ends, makes the school read-only for 30 days, then archives it. There is
+no payment page yet, so decide before launch: either extend trials from the platform admin
+API (`POST /api/platform/overrides/extend-trial`), or set
+`Billing__EnforceReadOnly=false` until payments exist. Schools see a banner in the web app
+in either case.
 
 Already set by the image, no action needed: `ASPNETCORE_ENVIRONMENT=Production`,
 `ForwardedHeaders__Enabled=true`. Railway injects `PORT`; the API binds to it.
@@ -62,8 +85,9 @@ Already set by the image, no action needed: `ASPNETCORE_ENVIRONMENT=Production`,
 - **Networking → Generate Domain.** Note the URL; it becomes `API_ORIGIN` on Cloudflare.
 - **Source → Wait for CI: on.** Railway then deploys only commits whose GitHub Actions
   checks pass (`.github/workflows/ci.yml`).
-- **Replicas:** start with one. The in-process message queue and scheduled jobs assume a
-  single instance until a durable job store is added.
+- **Replicas:** more than one is fine. Background jobs and schedules live in PostgreSQL
+  (`background_jobs`, `scheduled_jobs`) and are claimed with leases, so each job runs once.
+  Rate limits are counted per instance.
 
 ### Backups
 
@@ -138,14 +162,20 @@ branches whose CI has passed.
 `marketing-site/public` is served as static files. The site routes pages such as `/pricing`
 in the browser, so `wrangler.jsonc` answers unknown paths with `index.html`.
 
+The demo and contact forms post to `/api/public/enquiries` on the marketing site itself;
+`worker/index.js` forwards only that request to the API. Set on the `learncloud` Worker:
+
+| Variable | Type | Value |
+|---|---|---|
+| `API_ORIGIN` | text | The Railway API domain, as for the web app |
+| `API_PROXY_SECRET` | secret | Same value as `Proxy__SharedSecret` |
+
 ```bash
 cd marketing-site
 npx wrangler@4.131.2 deploy
 ```
 
-Before relying on it, see `marketing-site/README.md`: the demo form posts to
-`https://api.learncloud.co.zw/api/demo-requests`, which the API does not provide yet, and
-the analytics ID is a placeholder.
+The analytics ID in `public/index.html` (`G-LEARNCLD`) is still a placeholder.
 
 ---
 
@@ -184,10 +214,13 @@ another's subjects, students, guardians or classes.
 
 ## 7. Security notes
 
-- The Railway domain is publicly reachable, so anyone can bypass Cloudflare and call the API
-  directly. Tenant isolation, authentication and validation all live in the API and still
-  apply. Only the client IP used for rate limiting is affected: direct callers can influence
-  `X-Forwarded-For`, but not the proxy-reported IP, which requires `Proxy__SharedSecret`.
+- With `Proxy__RequireSecret=true` the Railway domain only answers health checks; everything
+  else must come through the Workers. Without it, anyone can call the API directly: tenant
+  isolation, authentication and validation still apply, and only rate limiting is weaker,
+  because direct callers can influence `X-Forwarded-For`.
+- Emails are queued as background jobs. A job's payload (which can hold a password reset
+  link) is replaced once the email is sent or has finally failed, and finished jobs are
+  deleted after 14 days (succeeded) or 90 days (failed).
 - Rotate `Jwt__Secret` and `Proxy__SharedSecret` if they may have leaked. Rotating the JWT
   secret signs everyone out; rotate the proxy secret on both sides together.
 - The production image runs as a non-root user and serves plain HTTP inside Railway; TLS is

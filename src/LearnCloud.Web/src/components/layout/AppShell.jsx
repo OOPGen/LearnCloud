@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { getSessionInfo, logout } from '../../lib/apiClient';
+import { getAccountStatus, getSessionInfo, logout } from '../../lib/apiClient';
 
 // Icons - Lucide style consistent stroke 1.8
 const IconDashboard = (p) => <svg {...p} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>;
@@ -156,6 +156,14 @@ export default function AppShell({ children, title, description, actions, breadc
   const location = useLocation();
   const navigate = useNavigate();
   const displayName = getSessionInfo()?.displayName || 'Signed in';
+  const [account, setAccount] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    getAccountStatus().then(status => { if (active) setAccount(status); });
+    return () => { active = false; };
+  }, []);
+  const showAccountBanner = account && account.banner && (account.isReadOnly || account.state === 'PastDue');
   const initials = displayName.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || 'LC';
 
   async function signOut() {
@@ -391,6 +399,11 @@ export default function AppShell({ children, title, description, actions, breadc
         {/* Content */}
         <main className="flex-1 p-4 sm:p-6">
           <div className="max-w-7xl mx-auto">
+            {showAccountBanner && (
+              <div role="alert" className={`mb-4 p-3 rounded-xl border text-[13px] text-neutral-800 ${account.isReadOnly ? 'border-danger-100 bg-danger-50' : 'border-warning-100 bg-warning-50'}`}>
+                <strong>{account.isReadOnly ? 'Read-only. ' : 'Payment overdue. '}</strong>{account.banner}
+              </div>
+            )}
             {preview && (
               <div role="note" className="mb-4 p-3 rounded-xl border border-warning-100 bg-warning-50 text-[13px] text-neutral-800">
                 <strong>Preview with sample data.</strong> This page is not connected to your school&apos;s records yet.

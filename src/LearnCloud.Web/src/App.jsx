@@ -12,6 +12,8 @@ const StudentsPage = lazy(() => import('./pages/StudentsPage'))
 const StudentDetailPage = lazy(() => import('./pages/StudentDetailPage'))
 const GuardiansPage = lazy(() => import('./pages/GuardiansPage'))
 const FeesPage = lazy(() => import('./pages/FeesPage'))
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'))
+const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'))
 
 function LoadingFallback() {
   return (
@@ -31,6 +33,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<LoginSkewed />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
           {/* Signed-in area. Subjects and the school records pages (academic years, grades,
               students, guardians) use the API; Dashboard and Fees are still static previews.
               Links to modules without a page redirect to Students. */}

@@ -48,7 +48,7 @@ public static class AuthModuleExtensions
         // Services
         services.AddScoped<ITokenService, TokenService>();
         services.AddScoped<IAuthService, AuthService>();
-        services.AddScoped<IEmailSender, FakeEmailSender>();
+        services.AddScoped<IEmailSender, OutboxEmailSender>();
 
         // Validators
         services.AddValidatorsFromAssemblyContaining<Validators.RegisterTenantValidator>();
@@ -149,6 +149,13 @@ public static class AuthModuleExtensions
                     _ => new FixedWindowRateLimiterOptions
                     {
                         PermitLimit = 10, Window = TimeSpan.FromHours(1), QueueLimit = 0
+                    }));
+            // Public marketing forms (demo requests, contact messages).
+            options.AddPolicy("public_form", httpContext =>
+                RateLimitPartition.GetFixedWindowLimiter(httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 5, Window = TimeSpan.FromHours(1), QueueLimit = 0
                     }));
             // RateLimiting:ApiGeneralPerMinute lets the integration tests, which run every
             // test as the same user, raise the limit; production keeps the default.

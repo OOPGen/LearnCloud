@@ -1,6 +1,7 @@
 using System.Text;
 using LearnCloud.Core.DTOs;
 using LearnCloud.Core.Validators;
+using LearnCloud.Infrastructure.Text;
 using Xunit;
 
 namespace LearnCloud.Core.Tests;

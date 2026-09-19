@@ -37,12 +37,13 @@ function rememberSession(data) {
   sessionInfo = { userId: data.userId, tenantId: data.tenantId, displayName: data.displayName };
 }
 
-/** Error carrying the API's status and a message fit to show a user. */
+/** Error carrying the API's status, its error code if any, and a message fit to show a user. */
 export class ApiError extends Error {
-  constructor(status, message, fieldErrors = {}) {
+  constructor(status, message, fieldErrors = {}, code = null) {
     super(message);
     this.status = status;
     this.fieldErrors = fieldErrors;
+    this.code = code;
   }
 }
 
@@ -76,7 +77,7 @@ async function toApiError(response) {
     ? 'Too many attempts. Please wait a minute and try again.'
     : response.status >= 500 ? 'Something went wrong on our side. Please try again.' : 'Request failed.';
   const message = (body && (body.detail || body.message)) || firstFieldError || (body && body.title) || fallback;
-  return new ApiError(response.status, message, fieldErrors);
+  return new ApiError(response.status, message, fieldErrors, body && typeof body.error === 'string' ? body.error : null);
 }
 
 async function refreshAccessToken() {
@@ -193,8 +194,49 @@ export async function forgotPassword(email, tenantSlug) {
   return res.json();
 }
 
+/** Sets a new password with the token from the reset email. */
+export async function resetPassword(email, token, newPassword, confirmPassword) {
+  const res = await fetch('/api/auth/reset-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ email: email.trim().toLowerCase(), token, newPassword, confirmPassword }),
+  });
+  if (!res.ok) throw await toApiError(res);
+  return res.json();
+}
+
+/** Confirms an email address with the token from the verification email. */
+export async function verifyEmail(email, token) {
+  const res = await fetch('/api/auth/verify-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ email: email.trim().toLowerCase(), token }),
+  });
+  if (!res.ok) throw await toApiError(res);
+  return res.json();
+}
+
+let accountStatusPromise = null;
+
+/**
+ * The school's subscription status for the read-only banner, fetched once per page load.
+ * Resolves to null when it cannot be read.
+ */
+export function getAccountStatus() {
+  if (!accountStatusPromise) {
+    accountStatusPromise = apiJson('/api/billing/read-only-status').catch(() => {
+      accountStatusPromise = null;
+      return null;
+    });
+  }
+  return accountStatusPromise;
+}
+
 /** Signs out: revokes refresh tokens server-side and clears the in-memory token. */
 export async function logout() {
+  accountStatusPromise = null;
   try {
     if (accessToken) await apiFetch('/api/auth/logout', { method: 'POST' });
   } catch {

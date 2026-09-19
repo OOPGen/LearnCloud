@@ -11802,6 +11802,122 @@ namespace LearnCloud.Api.Data.Migrations
                     b.ToTable("waiting_lists", (string)null);
                 });
 
+            modelBuilder.Entity("LearnCloud.Infrastructure.Jobs.BackgroundJob", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("last_error");
+
+                    b.Property<string>("LockedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("locked_by");
+
+                    b.Property<DateTime?>("LockedUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("locked_until");
+
+                    b.Property<int>("MaxAttempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_attempts");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("payload_json");
+
+                    b.Property<DateTime>("RunAfter")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("run_after");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<long?>("TenantId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("tenant_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_background_jobs");
+
+                    b.HasIndex("Status", "CompletedAt")
+                        .HasDatabaseName("idx_background_jobs_completed");
+
+                    b.HasIndex("Status", "RunAfter")
+                        .HasDatabaseName("idx_background_jobs_due")
+                        .HasFilter("status IN ('pending', 'running')");
+
+                    b.ToTable("background_jobs", (string)null);
+                });
+
+            modelBuilder.Entity("LearnCloud.Infrastructure.Jobs.ScheduledJobState", b =>
+                {
+                    b.Property<string>("Name")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<DateTime?>("LastFinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_finished_at");
+
+                    b.Property<string>("LastResult")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("last_result");
+
+                    b.Property<DateTime?>("LastStartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_started_at");
+
+                    b.Property<string>("LockedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("locked_by");
+
+                    b.Property<DateTime?>("LockedUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("locked_until");
+
+                    b.Property<DateTime>("NextRunAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_run_at");
+
+                    b.HasKey("Name")
+                        .HasName("pk_scheduled_jobs");
+
+                    b.ToTable("scheduled_jobs", (string)null);
+                });
+
             modelBuilder.Entity("LearnCloud.Library.Entities.Book", b =>
                 {
                     b.Property<long>("Id")
@@ -14696,6 +14812,111 @@ namespace LearnCloud.Api.Data.Migrations
                         .HasName("pk_parent_teacher_messages");
 
                     b.ToTable("parent_teacher_messages", (string)null);
+                });
+
+            modelBuilder.Entity("LearnCloud.PlatformAdmin.Controllers.SalesEnquiry", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("ConsentGiven")
+                        .HasColumnType("boolean")
+                        .HasColumnName("consent_given");
+
+                    b.Property<string>("ContactName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("contact_name");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long?>("CreatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("CurrentSystem")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("current_system");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<long?>("DeletedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("email");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_deleted");
+
+                    b.Property<string>("LearnerCount")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("learner_count");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("message");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("phone");
+
+                    b.Property<string>("Role")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("role");
+
+                    b.Property<string>("SchoolName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("school_name");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("source");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long?>("UpdatedBy")
+                        .HasColumnType("bigint")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_sales_enquiries");
+
+                    b.HasIndex("Status", "CreatedAt")
+                        .HasDatabaseName("idx_sales_enquiries_status");
+
+                    b.ToTable("sales_enquiries", (string)null);
                 });
 
             modelBuilder.Entity("LearnCloud.PlatformAdmin.Entities.AnnouncementBroadcast", b =>

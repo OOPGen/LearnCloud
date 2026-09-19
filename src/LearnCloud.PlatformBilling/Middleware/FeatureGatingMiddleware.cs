@@ -1,10 +1,14 @@
 using LearnCloud.MultiTenancy.Context;
 using LearnCloud.PlatformBilling.Entities;
+using LearnCloud.PlatformBilling.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace LearnCloud.PlatformBilling.Middleware;
 
-// Feature gating: middleware or filter that blocks endpoints belonging to modules not included in tenant's plan, returning clear upgrade-required response
+// Blocks, with 402:
+// - endpoints of modules the school's plan does not include (upgrade_required);
+// - changes by a school whose subscription is read-only (account_read_only). Reading is
+//   never blocked, and signing in, billing and platform endpoints stay open.
 public class FeatureGatingMiddleware
 {
     private readonly RequestDelegate _next;
@@ -28,26 +32,26 @@ public class FeatureGatingMiddleware
         { "/api/admissions", FeatureFlags.Admissions },
     };
 
+    // POST endpoints that only read (exports and previews); read-only schools keep them.
+    private static readonly HashSet<string> ReadingPosts = new()
+    {
+        "/api/hr/payroll-export",
+        "/api/messaging/preview",
+        "/api/communication/segments/preview",
+    };
+
     public FeatureGatingMiddleware(RequestDelegate next, ILogger<FeatureGatingMiddleware> logger)
     {
         _next = next;
         _logger = logger;
     }
 
-    public async Task InvokeAsync(HttpContext httpContext, LearnCloudDbContext db, ITenantContext tenantContext)
+    public async Task InvokeAsync(HttpContext httpContext, LearnCloudDbContext db, ITenantContext tenantContext, IOptions<BillingOptions> billing)
     {
         var path = httpContext.Request.Path.Value?.ToLower() ?? "";
 
-        // Skip platform admin, billing, auth, health endpoints
-        if (path.StartsWith("/api/platform") || path.StartsWith("/api/billing") || path.StartsWith("/api/auth") || path.StartsWith("/health") || path.StartsWith("/api/setup"))
-        {
-            await _next(httpContext);
-            return;
-        }
-
-        // Find required feature for this endpoint
-        var requiredFeature = EndpointFeatureMap.FirstOrDefault(kv => path.StartsWith(kv.Key)).Value;
-        if (string.IsNullOrEmpty(requiredFeature))
+        // Skip platform admin, billing, auth, health and public endpoints
+        if (path.StartsWith("/api/platform") || path.StartsWith("/api/billing") || path.StartsWith("/api/auth") || path.StartsWith("/health") || path.StartsWith("/api/health") || path.StartsWith("/api/public"))
         {
             await _next(httpContext);
             return;
@@ -61,9 +65,39 @@ public class FeatureGatingMiddleware
             return;
         }
 
+        var requiredFeature = EndpointFeatureMap.FirstOrDefault(kv => path.StartsWith(kv.Key)).Value;
+        var isChange = !(HttpMethods.IsGet(httpContext.Request.Method) || HttpMethods.IsHead(httpContext.Request.Method) || HttpMethods.IsOptions(httpContext.Request.Method))
+            && !(HttpMethods.IsPost(httpContext.Request.Method) && ReadingPosts.Contains(path.TrimEnd('/')));
+        if (string.IsNullOrEmpty(requiredFeature) && !(isChange && billing.Value.EnforceReadOnly))
+        {
+            await _next(httpContext);
+            return;
+        }
+
         // Get subscription and plan
         var subscription = await db.Set<Subscription>().Include(s => s.Plan).FirstOrDefaultAsync(s => s.TenantId == tenantId.Value && !s.IsDeleted);
         if (subscription == null)
+        {
+            await _next(httpContext);
+            return;
+        }
+
+        if (isChange && billing.Value.EnforceReadOnly && SubscriptionAccess.IsReadOnly(subscription.State))
+        {
+            _logger.LogInformation("Read-only account: blocked {Method} {Path} for tenant {TenantId} in state {State}", httpContext.Request.Method, path, tenantId, subscription.State);
+            httpContext.Response.StatusCode = StatusCodes.Status402PaymentRequired;
+            await httpContext.Response.WriteAsJsonAsync(new
+            {
+                error = "account_read_only",
+                title = "Your school is read-only",
+                detail = SubscriptionAccess.Banner(subscription, billing.Value.ContactEmail),
+                state = subscription.State.ToString(),
+                contactEmail = billing.Value.ContactEmail,
+            });
+            return;
+        }
+
+        if (string.IsNullOrEmpty(requiredFeature))
         {
             await _next(httpContext);
             return;

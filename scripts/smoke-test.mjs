@@ -55,6 +55,12 @@ check('anonymous access to student records is refused', anonymousStudents.status
 const badLogin = await call('POST', '/api/auth/login', { body: { email: 'nobody@example.invalid', password: 'wrong-password', tenantSlug: null } });
 check('invalid credentials are rejected', badLogin.status === 401 || badLogin.status === 429, `HTTP ${badLogin.status}`);
 
+const billingAnonymous = await call('GET', '/api/billing/read-only-status');
+check('billing status requires sign-in', billingAnonymous.status === 401, `HTTP ${billingAnonymous.status}`);
+
+const forgotUnknown = await call('POST', '/api/auth/forgot-password', { body: { email: 'nobody@example.invalid', tenantSlug: null } });
+check('password reset request answers the same for unknown addresses', forgotUnknown.status === 200 || forgotUnknown.status === 429, `HTTP ${forgotUnknown.status}`);
+
 if (full) {
   const run = Date.now().toString(36);
   const password = 'Sm0ke!Test-Passw0rd';
@@ -132,6 +138,16 @@ if (full) {
 
   const left = await call('POST', `/api/students/${studentId}/exit`, { token: a.token, body: { reason: 'withdrawn' } });
   check('school A records the student leaving', left.status === 200 && left.json?.currentPlacement === null && left.json?.status === 'inactive', `HTTP ${left.status}`);
+
+  // Go-live checks: endpoints that used to fail, and the marketing enquiry form.
+  const subscription = await call('GET', '/api/billing/subscription', { token: a.token });
+  check('school A reads its subscription', subscription.status === 200 && subscription.json?.canEdit === true, `HTTP ${subscription.status}`);
+  const forgot = await call('POST', '/api/auth/forgot-password', { body: { email: `admin@${a.slug}.test`, tenantSlug: a.slug } });
+  check('password reset request for an existing account', forgot.status === 200, `HTTP ${forgot.status}`);
+  const enquiry = await call('POST', '/api/public/enquiries', {
+    body: { schoolName: `Smoke Test ${run}`, contactName: 'Smoke Tester', email: `sales-smoke@${a.slug}.test`, message: 'Smoke test enquiry', source: 'marketing_contact' },
+  });
+  check('marketing enquiry is accepted', enquiry.status === 202, `HTTP ${enquiry.status}`);
   console.log(`\nCreated throwaway schools ${a.slug} and ${b.slug}.`);
 }
 

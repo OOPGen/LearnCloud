@@ -8,6 +8,7 @@ public static class PlatformAdminModuleExtensions
     {
         services.AddScoped<IPlatformAdminService, PlatformAdminService>();
         services.AddScoped<IImpersonationService, ImpersonationService>();
+        services.AddOptions<Controllers.SalesOptions>().BindConfiguration("Sales");
         return services;
     }
 }

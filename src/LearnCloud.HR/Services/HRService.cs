@@ -290,28 +290,36 @@ public class HRService : IHRService
             staffQuery = staffQuery.Where(s => req.StaffIds.Contains(s.Id));
 
         var staffList = await staffQuery.ToListAsync(ct);
+        var departmentIds = staffList.Where(s => s.DepartmentId.HasValue).Select(s => s.DepartmentId!.Value).Distinct().ToList();
+        var departments = await _db.Set<Department>().Where(d => d.TenantId == tenantId && departmentIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id, d => d.Name, ct);
 
-        // Build CSV content - payroll-ready file for import into Belina/Pastel, NOT calculated deductions
-        var csvLines = new List<string>();
-        csvLines.Add("EmployeeCode,NationalID,FullName,Department,Designation,EmploymentType,HireDate,BasicSalary,Allowances_Housing,Allowances_Transport,Allowances_COLA,OvertimeHours,OvertimeRate,LeaveDaysTakenAnnual,LeaveDaysTakenSick,UnpaidLeaveDays,Deductions_Loans,Deductions_Union,BankName,AccountNumber,Branch,GrossTotal,Notes_PayeToBeCalculatedByPayrollProduct");
+        // Payroll-ready file for import into Belina/Pastel. LearnCloud holds only the basic
+        // salary: allowances, overtime, leave, deductions and bank details are left blank for
+        // the payroll product. The export used to invent fixed allowances (100/50/30) for every
+        // employee and write 0 into the bank columns. Values go through CsvWriter, which
+        // quotes them and neutralises spreadsheet formulas.
+        var csvLines = new List<string>
+        {
+            Infrastructure.Text.CsvWriter.Row("EmployeeCode", "NationalID", "FullName", "Department", "Designation", "EmploymentType", "HireDate", "BasicSalary", "Currency",
+                "Allowances_Housing", "Allowances_Transport", "Allowances_COLA", "OvertimeHours", "OvertimeRate", "LeaveDaysTakenAnnual", "LeaveDaysTakenSick", "UnpaidLeaveDays",
+                "Deductions_Loans", "Deductions_Union", "BankName", "AccountNumber", "Branch", "Notes"),
+        };
 
         decimal totalGross = 0m;
         foreach (var staff in staffList)
         {
-            // Gross = basic + allowances (taxability flag for accountant, not us calculating tax)
             var basic = staff.CurrentSalary ?? 0m;
-            // For demo, allowances fixed
-            var housing = 100m;
-            var transport = 50m;
-            var cola = 30m;
-            var gross = basic + housing + transport + cola;
-            totalGross += gross;
-
-            csvLines.Add($"{staff.StaffNumber},{staff.NationalId},\"{staff.FirstName} {staff.LastName}\",{staff.DepartmentId},{staff.Designation},{staff.EmploymentType},{staff.HireDate:yyyy-MM-dd},{basic},{housing},{transport},{cola},0,0,0,0,0,0,0,0,0,,{gross},PAYE/NSSA/ZIMDEF to be calculated by payroll product");
+            totalGross += basic;
+            var department = staff.DepartmentId is long d ? departments.GetValueOrDefault(d) : null;
+            csvLines.Add(Infrastructure.Text.CsvWriter.Row(
+                staff.StaffNumber, staff.NationalId, $"{staff.FirstName} {staff.LastName}", department, staff.Designation, staff.EmploymentType,
+                staff.HireDate.ToString("yyyy-MM-dd"), basic.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture), staff.Currency,
+                null, null, null, null, null, null, null, null, null, null, null, null, null,
+                staff.CurrentSalary is null ? "No salary recorded in LearnCloud" : "PAYE/NSSA/ZIMDEF to be calculated by the payroll product"));
         }
 
-        var fileName = $"payroll_ready_{req.Year}_{req.Month}_{DateTime.UtcNow:yyyyMMddHHmmss}.{req.Format.Split('_').Last()}";
-        var fileContent = string.Join("\n", csvLines);
+        var fileName = $"payroll_ready_{req.Year}_{req.Month}_{DateTime.UtcNow:yyyyMMddHHmmss}.csv";
+        var fileContent = System.Text.Encoding.UTF8.GetString(Infrastructure.Text.CsvWriter.ToUtf8(csvLines));
         // SECURITY FIX C6: Store in secure location outside wwwroot with tenantId and random GUID, not predictable
         var randomFileName = $"{Guid.NewGuid():N}_{fileName}";
         var exportsDir = Path.Combine(AppContext.BaseDirectory, "exports", "payroll", tenantId.ToString());

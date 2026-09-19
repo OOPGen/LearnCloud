@@ -77,7 +77,10 @@ public class TemplateService : ITemplateService
     {
         // Resolve audience to get total recipients and sample
         var audienceResolver = new AudienceResolver(_db);
-        var recipients = await audienceResolver.ResolveAsync(tenantId, MapAudience(req.Audience), ct);
+        // The full audience request (class, stream, amount owed...). This used to be reduced to
+        // its type and passed to an overload that threw NotImplementedException, so every
+        // message preview failed.
+        var recipients = await audienceResolver.ResolveAsync(tenantId, req.Audience, ct);
 
         // Filter opt-out and no contact
         var filtered = await FilterOptOutAndNoContact(tenantId, recipients, req.Channel, ct);
@@ -161,17 +164,6 @@ public class TemplateService : ITemplateService
         };
     }
 
-    private static AudienceType MapAudience(AudienceRequest req) => req.Type.ToLower() switch
-    {
-        "class" => AudienceType.Class,
-        "stream" => AudienceType.Stream,
-        "year_group" => AudienceType.YearGroup,
-        "all_guardians" => AudienceType.AllGuardians,
-        "arrears_over_x" => AudienceType.ArrearsOverX,
-        "absent_today" => AudienceType.AbsentToday,
-        "manual" => AudienceType.Manual,
-        _ => AudienceType.DynamicList
-    };
 
     private async Task<(List<RecipientInfo> FinalRecipients, int OptedOutCount, int NoContactCount)> FilterOptOutAndNoContact(long tenantId, List<RecipientInfo> recipients, string channel, CancellationToken ct)
     {
@@ -245,11 +237,6 @@ public class AudienceResolver
     private readonly LearnCloudDbContext _db;
     public AudienceResolver(LearnCloudDbContext db) => _db = db;
 
-    public async Task<List<RecipientInfo>> ResolveAsync(long tenantId, AudienceType audienceType, CancellationToken ct = default)
-    {
-        // Overload with AudienceRequest mapping handled elsewhere - this one uses type only, actual filter via second overload
-        throw new NotImplementedException("Use ResolveAsync with AudienceRequest");
-    }
 
     public async Task<List<RecipientInfo>> ResolveAsync(long tenantId, AudienceRequest request, CancellationToken ct = default)
     {

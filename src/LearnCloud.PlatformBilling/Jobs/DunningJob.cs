@@ -1,3 +1,4 @@
+using LearnCloud.Infrastructure.Email;
 using LearnCloud.MultiTenancy.Context;
 using LearnCloud.PlatformBilling.Entities;
 using LearnCloud.PlatformBilling.Services;
@@ -12,8 +13,17 @@ public class DunningJob
 {
     private readonly LearnCloudDbContext _db;
     private readonly ILogger<DunningJob> _logger;
+    private readonly IEmailOutbox _email;
+    private readonly BillingOptions _billing;
 
-    public DunningJob(LearnCloudDbContext db, ILogger<DunningJob> logger) { _db = db; _logger = logger; }
+    public DunningJob(LearnCloudDbContext db, ILogger<DunningJob> logger, IEmailOutbox email, IOptions<BillingOptions> billing)
+    {
+        _db = db; _logger = logger; _email = email; _billing = billing.Value;
+    }
+
+    // Messages point schools at the billing contact: there is no payment page yet, and the
+    // per-school billing links these messages used did not exist either.
+    private string Contact => $"Contact {_billing.ContactEmail} to pay.";
 
     public async Task RunAsync(CancellationToken ct = default)
     {
@@ -65,7 +75,7 @@ public class DunningJob
                         NewValues = $"{{\"to\":\"Expired\",\"readOnlyUntil\":\"{sub.ReadOnlyUntil:o}\"}}"
                     });
 
-                    await SendDunningEvent(sub, "trial_expired", $"Trial expired. Your school is now read-only for 30 days. Pay to reactivate and keep data. Payment link: https://{sub.Tenant.Slug}.learncloud.co.zw/billing", ct);
+                    await SendDunningEvent(sub, "trial_expired", $"Trial expired. Your school is now read-only for 30 days. Pay to reactivate and keep data. {Contact}", ct);
 
                     await _db.SaveChangesAsync(ct);
                     _logger.LogInformation("Trial expired for tenant {TenantId}, moved to Expired with read-only until {ReadOnlyUntil}", sub.TenantId, sub.ReadOnlyUntil);
@@ -97,7 +107,7 @@ public class DunningJob
                     SubscriptionStateMachine.ApplyTransition(sub, SubscriptionState.PastDue, BillingTrigger.InvoiceOverdue, $"Invoice {invoice.InvoiceNumber} overdue due {invoice.DueDate:yyyy-MM-dd}");
                     sub.PastDueSince = now;
 
-                    await SendDunningEvent(sub, "invoice_overdue", $"Invoice {invoice.InvoiceNumber} overdue since {invoice.DueDate:yyyy-MM-dd}, amount {invoice.BalanceDue} {invoice.Currency}. Please pay. Link: https://{sub.Tenant.Slug}.learncloud.co.zw/billing", ct, invoice.Id);
+                    await SendDunningEvent(sub, "invoice_overdue", $"Invoice {invoice.InvoiceNumber} overdue since {invoice.DueDate:yyyy-MM-dd}, amount {invoice.BalanceDue} {invoice.Currency}. Please pay within {sub.PastDueGraceDays} days to avoid suspension. {Contact}", ct, invoice.Id);
 
                     await _db.SaveChangesAsync(ct);
                 }
@@ -112,7 +122,7 @@ public class DunningJob
                 var daysPastDue = (now - (sub.PastDueSince?.Date ?? invoice.DueDate)).Days;
                 if (daysPastDue % 3 == 0) // every 3 days
                 {
-                    await SendDunningEvent(sub, $"past_due_day_{daysPastDue}", $"Reminder: Invoice {invoice.InvoiceNumber} past due {daysPastDue} days, balance {invoice.BalanceDue}. Pay to avoid suspension.", ct, invoice.Id);
+                    await SendDunningEvent(sub, $"past_due_day_{daysPastDue}", $"Reminder: Invoice {invoice.InvoiceNumber} past due {daysPastDue} days, balance {invoice.BalanceDue}. Pay to avoid suspension. {Contact}", ct, invoice.Id);
                 }
             }
         }
@@ -133,7 +143,7 @@ public class DunningJob
                     SubscriptionStateMachine.ApplyTransition(sub, SubscriptionState.Suspended, BillingTrigger.GracePeriodEnded, $"Past due grace {sub.PastDueGraceDays} days ended");
                     sub.SuspendedSince = now;
 
-                    await SendDunningEvent(sub, "suspended", $"Your school account has been suspended due to non-payment. Tenant is now read-only with banner and payment link. Data never deleted. Pay to reactivate. Link: https://{sub.Tenant.Slug}.learncloud.co.zw/billing/payment-link", ct);
+                    await SendDunningEvent(sub, "suspended", $"Your school account has been suspended for non-payment. You can still view and export your records, but not change them. Your data is not deleted. {Contact}", ct);
 
                     await _db.SaveChangesAsync(ct);
                     _logger.LogWarning("Subscription {SubId} tenant {TenantId} suspended after grace", sub.Id, sub.TenantId);
@@ -149,7 +159,7 @@ public class DunningJob
                 var daysLeft = (graceEnd - now).Days;
                 if (daysLeft == 2 || daysLeft == 1)
                 {
-                    await SendDunningEvent(sub, $"suspension_warning_{daysLeft}d", $"Warning: Your account will be suspended in {daysLeft} days if payment not received. Read-only mode after suspension, data never deleted, payment link will remain.", ct);
+                    await SendDunningEvent(sub, $"suspension_warning_{daysLeft}d", $"Warning: Your account will be suspended in {daysLeft} days if payment not received. After suspension your school becomes read-only; your data is not deleted. {Contact}", ct);
                 }
             }
         }
@@ -198,10 +208,23 @@ public class DunningJob
         }
     }
 
+    // Queues the notice to the school's contact email and records it. It used to record
+    // IsSuccess = true without sending anything, to "admin@school.co.zw" when the school had
+    // no contact address.
     private async Task SendDunningEvent(Subscription sub, string eventType, string body, CancellationToken ct, long? invoiceId = null)
     {
+        // A run interrupted by a deploy is repeated from the start; do not notify twice.
+        var recently = DateTime.UtcNow.AddHours(-20);
+        if (await _db.Set<DunningEvent>().AnyAsync(e => e.SubscriptionId == sub.Id && e.EventType == eventType && e.InvoiceId == invoiceId && e.SentAt > recently, ct))
+        {
+            _logger.LogInformation("Dunning event {EventType} for tenant {TenantId} was already recorded today; not sent again", eventType, sub.TenantId);
+            await _db.SaveChangesAsync(ct);
+            return;
+        }
+
         var tenant = await _db.Set<LearnCloud.MultiTenancy.Entities.Tenant>().FirstOrDefaultAsync(t=>t.Id==sub.TenantId, ct);
-        var recipient = tenant?.ContactEmail ?? "admin@school.co.zw";
+        var recipient = tenant?.ContactEmail;
+        var subject = $"LearnCloud billing: {Title(eventType)}";
 
         var dunning = new DunningEvent
         {
@@ -210,15 +233,35 @@ public class DunningJob
             InvoiceId = invoiceId,
             EventType = eventType,
             Channel = "email",
-            Recipient = recipient,
-            Subject = $"LearnCloud Billing - {eventType}",
+            Recipient = recipient ?? "",
+            Subject = subject,
             Body = body,
             SentAt = DateTime.UtcNow,
-            IsSuccess = true
+            IsSuccess = !string.IsNullOrWhiteSpace(recipient),
+            FailureReason = string.IsNullOrWhiteSpace(recipient) ? "The school has no contact email" : null,
         };
         _db.Set<DunningEvent>().Add(dunning);
+
+        if (!string.IsNullOrWhiteSpace(recipient))
+        {
+            var (html, text) = EmailLayout.Render(Title(eventType), new[] { $"Dear {tenant!.Name},", body }, footer: "You receive this because you are the billing contact for your school on LearnCloud.");
+            _email.Queue(new OutgoingEmail(recipient, tenant.Name, subject, html, text, Category: "billing"), sub.TenantId);
+        }
         await _db.SaveChangesAsync(ct);
 
-        _logger.LogInformation("Dunning event {EventType} for tenant {TenantId}: {Body}", eventType, sub.TenantId, body);
+        _logger.LogInformation("Dunning event {EventType} for tenant {TenantId} queued: {Queued}", eventType, sub.TenantId, dunning.IsSuccess);
     }
+
+    private static string Title(string eventType) => eventType switch
+    {
+        "trial_reminder_day_7" or "trial_reminder_day_12" => "your trial ends soon",
+        "trial_expired" => "your trial has ended",
+        "invoice_overdue" => "invoice overdue",
+        "suspended" => "account suspended",
+        "cancelled_after_suspension" => "subscription cancelled",
+        "archived" => "account archived",
+        _ when eventType.StartsWith("past_due_day_") => "payment reminder",
+        _ when eventType.StartsWith("suspension_warning_") => "suspension warning",
+        _ => eventType.Replace('_', ' '),
+    };
 }

@@ -3,28 +3,36 @@ import React, { useEffect, useRef } from 'react';
 export function Dialog({ open, onOpenChange, title, description, children, footer, size = "md" }) {
   const overlayRef = useRef(null);
   const contentRef = useRef(null);
+  // Callers pass a new onOpenChange on every render. Reading it through a ref keeps the
+  // effect below to opening and closing; it used to rerun on every keystroke in the form and
+  // move the cursor back to the first field.
+  const onOpenChangeRef = useRef(onOpenChange);
+  useEffect(() => { onOpenChangeRef.current = onOpenChange; });
 
   useEffect(() => {
     if (!open) return;
-    
+
     const prevOverflow = document.body.style.overflow;
+    const prevFocus = document.activeElement;
     document.body.style.overflow = 'hidden';
-    
+
     const handleEsc = (e) => {
-      if (e.key === 'Escape') onOpenChange?.(false);
+      if (e.key === 'Escape') onOpenChangeRef.current?.(false);
     };
-    
+
     document.addEventListener('keydown', handleEsc);
-    
-    // Focus trap - focus first focusable inside
+
+    // Focus the first focusable element once, when the dialog opens
     const focusable = contentRef.current?.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
     if (focusable?.[0]) focusable[0].focus();
-    
+
     return () => {
       document.body.style.overflow = prevOverflow;
       document.removeEventListener('keydown', handleEsc);
+      // Back to where the user was, e.g. the button that opened the dialog
+      if (prevFocus instanceof HTMLElement && prevFocus.isConnected) prevFocus.focus();
     };
-  }, [open, onOpenChange]);
+  }, [open]);
 
   if (!open) return null;
 

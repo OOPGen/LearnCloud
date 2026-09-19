@@ -88,11 +88,30 @@ throwaway schools with `--full`.
 | `Jwt:Secret` | user-secrets | Required, 32+ characters, rejected if it looks like a demo value. |
 | `Jobs:Enabled` | `appsettings.Development.json` (false) | Scheduled dunning and communication-rule jobs. |
 | `RateLimiting:ApiGeneralPerMinute` | default 60 | Requests per minute per signed-in user for most endpoints. The integration tests raise it. |
+| `Email:Provider` | `Log` by default | Emails are only logged (without their bodies). To see them, use Mailpit (below). |
+| `App:PublicUrl` | `appsettings.Development.json` (`http://localhost:5173`) | Base address for links in emails. |
 | `AI:OpenAI:ApiKey` | optional | Without it, AI features use the rule-based provider. |
 | `Messaging:Sms`, `Messaging:Email` | optional | Needed only to actually send messages. |
 
 In production every value comes from environment variables, for example
 `ConnectionStrings__Default` and `Jwt__Secret`.
+
+## Seeing emails locally
+
+`deployment/docker-compose.dev.yml` includes Mailpit, a mail catcher. Start it and point the
+API at it, then open http://localhost:8025 to read password reset and verification emails:
+
+```powershell
+docker compose -f deployment/docker-compose.dev.yml up -d mailpit
+dotnet user-secrets set "Email:Provider" "Smtp" --project src/LearnCloud.Api
+dotnet user-secrets set "Email:FromAddress" "noreply@learncloud.local" --project src/LearnCloud.Api
+dotnet user-secrets set "Email:Smtp:Host" "127.0.0.1" --project src/LearnCloud.Api
+dotnet user-secrets set "Email:Smtp:Port" "1025" --project src/LearnCloud.Api
+dotnet user-secrets set "Email:Smtp:Security" "None" --project src/LearnCloud.Api
+dotnet user-secrets set "Jobs:Enabled" "true" --project src/LearnCloud.Api
+```
+
+Emails are sent by the background job worker, so `Jobs:Enabled` must be true.
 
 ## Resetting the database
 

@@ -135,8 +135,7 @@ public class AudienceSegmentService : IAudienceSegmentService
         if (req.SegmentId.HasValue)
         {
             var segment = await _db.Set<AudienceSegment>().FirstOrDefaultAsync(s => s.Id == req.SegmentId.Value && s.TenantId == tenantId && !s.IsDeleted, ct) ?? throw new InvalidOperationException("Segment not found");
-            var filter = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(segment.FilterJson) ?? new Dictionary<string, object>();
-            audienceReq = new AudienceRequest(segment.AudienceType, filter.TryGetValue("gradeId", out var g) ? Convert.ToInt64(g) : null, filter.TryGetValue("streamId", out var s) ? Convert.ToInt64(s) : null, null, filter.TryGetValue("arrearsThreshold", out var a) ? Convert.ToDecimal(a) : null, null, null, null);
+            audienceReq = new AudienceRequest(segment.AudienceType, JsonSettings.Long(segment.FilterJson, "gradeId"), JsonSettings.Long(segment.FilterJson, "streamId"), null, JsonSettings.Decimal(segment.FilterJson, "arrearsThreshold"), null, null, null);
         }
         else
         {
@@ -325,13 +324,15 @@ public class CommunicationRuleEngine : ICommunicationRuleEngine
     private readonly Messaging.Services.AudienceResolver _audienceResolver;
     private readonly ILogger<CommunicationRuleEngine> _logger;
     private readonly ITenantContext _tenantContext;
+    private readonly Messaging.Jobs.IMessageBatchQueue _batchQueue;
 
-    public CommunicationRuleEngine(LearnCloudDbContext db, Messaging.Services.AudienceResolver audienceResolver, ILogger<CommunicationRuleEngine> logger, ITenantContext tenantContext)
+    public CommunicationRuleEngine(LearnCloudDbContext db, Messaging.Services.AudienceResolver audienceResolver, ILogger<CommunicationRuleEngine> logger, ITenantContext tenantContext, Messaging.Jobs.IMessageBatchQueue batchQueue)
     {
         _db = db;
         _audienceResolver = audienceResolver;
         _logger = logger;
         _tenantContext = tenantContext;
+        _batchQueue = batchQueue;
     }
 
     public async Task<List<RuleDto>> ListRulesAsync(long tenantId, CancellationToken ct = default)
@@ -369,7 +370,6 @@ public class CommunicationRuleEngine : ICommunicationRuleEngine
 
         foreach (var rule in rules)
         {
-            var config = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(rule.ConfigJson) ?? new Dictionary<string, object>();
 
             bool shouldTrigger = false;
             string reason = "";
@@ -378,21 +378,24 @@ public class CommunicationRuleEngine : ICommunicationRuleEngine
             {
                 case "absence_n_days":
                     // Config: {"n":3}
-                    var n = config.TryGetValue("n", out var nObj) ? Convert.ToInt32(nObj) : 3;
-                    // Check if student absent for N consecutive days
+                    var n = (int)(JsonSettings.Long(rule.ConfigJson, "n") ?? 3);
+                    // Check if student absent for N consecutive days. Guardians hear about a
+                    // streak once, and only while it is current: the hourly scan used to create
+                    // a new message for the same absences every hour.
                     if (trigger.StudentId.HasValue)
                     {
-                        var consecutive = await CountConsecutiveAbsenceAsync(tenantId, trigger.StudentId.Value, ct);
-                        if (consecutive >= n)
+                        var streak = await AbsenceStreakAsync(tenantId, trigger.StudentId.Value, ct);
+                        if (streak.Count >= n && streak.IsCurrent
+                            && !await AlreadyNotifiedAsync(rule, trigger.StudentId.Value, streak.Start, ct))
                         {
                             shouldTrigger = true;
-                            reason = $"Absent {consecutive} consecutive days >= threshold {n}";
+                            reason = $"Absent {streak.Count} consecutive days >= threshold {n}";
                         }
                     }
                     break;
                 case "arrears_over_threshold":
                     // Config: {"threshold":100,"currency":"USD"}
-                    var threshold = config.TryGetValue("threshold", out var thrObj) ? Convert.ToDecimal(thrObj) : 100m;
+                    var threshold = JsonSettings.Decimal(rule.ConfigJson, "threshold") ?? 100m;
                     if (trigger.Amount.HasValue && trigger.Amount.Value >= threshold)
                     {
                         shouldTrigger = true;
@@ -405,7 +408,7 @@ public class CommunicationRuleEngine : ICommunicationRuleEngine
                     break;
                 case "invoice_due_7_days":
                     // Config: {"daysBeforeDue":7}
-                    var daysBefore = config.TryGetValue("daysBeforeDue", out var dObj) ? Convert.ToInt32(dObj) : 7;
+                    var daysBefore = (int)(JsonSettings.Long(rule.ConfigJson, "daysBeforeDue") ?? 7);
                     if (trigger.Date.HasValue)
                     {
                         var daysUntilDue = (trigger.Date.Value - DateTime.UtcNow.Date).Days;
@@ -448,16 +451,20 @@ public class CommunicationRuleEngine : ICommunicationRuleEngine
                     // For each rule type, scan for matching conditions
                     if (r.EventType == "absence_n_days")
                     {
-                        var config = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(r.ConfigJson);
-                        var n = config != null && config.TryGetValue("n", out var nObj) ? Convert.ToInt32(nObj) : 3;
-                        // Find students with N consecutive absence
-                        var students = await _db.Set<Student>().Where(s => s.TenantId == tenantId && !s.IsDeleted).Take(100).ToListAsync(ct); // limit for demo
-                        foreach (var student in students)
+                        var n = (int)(JsonSettings.Long(r.ConfigJson, "n") ?? 3);
+                        // Only students with a recent absence can have a current streak. (This
+                        // used to scan an arbitrary 100 students.)
+                        var since = DateTime.UtcNow.Date.AddDays(-CurrentStreakDays);
+                        var studentIds = await _db.Set<AttendanceRecord>()
+                            .Where(a => a.TenantId == tenantId && !a.IsDeleted && a.AttendanceDate >= since
+                                        && (a.Status == AttendanceStatus.Absent || a.Status == AttendanceStatus.Sick))
+                            .Select(a => a.StudentId).Distinct().ToListAsync(ct);
+                        foreach (var studentId in studentIds)
                         {
-                            var consecutive = await CountConsecutiveAbsenceAsync(tenantId, student.Id, ct);
-                            if (consecutive >= n)
+                            var streak = await AbsenceStreakAsync(tenantId, studentId, ct);
+                            if (streak.Count >= n)
                             {
-                                await CheckAndTriggerAsync(tenantId, r.EventType, new TriggerRuleRequest(student.Id, null, null, null, null, $"{{\"consecutive\":{consecutive}}}"), ct);
+                                await CheckAndTriggerAsync(tenantId, r.EventType, new TriggerRuleRequest(studentId, null, null, null, null, $"{{\"consecutive\":{streak.Count}}}"), ct);
                             }
                         }
                     }
@@ -471,25 +478,36 @@ public class CommunicationRuleEngine : ICommunicationRuleEngine
         }
     }
 
-    private async Task<int> CountConsecutiveAbsenceAsync(long tenantId, long studentId, CancellationToken ct)
+    // A streak is current when its latest absence is at most this many days old (a weekend).
+    private const int CurrentStreakDays = 3;
+
+    private sealed record AbsenceStreak(int Count, DateTime Start, bool IsCurrent);
+
+    // Consecutive absent (or sick) records, most recent first. Simplified: weekends and
+    // days without a register do not break a streak.
+    private async Task<AbsenceStreak> AbsenceStreakAsync(long tenantId, long studentId, CancellationToken ct)
     {
-        var records = await _db.Set<AttendanceRecord>().Where(a => a.TenantId == tenantId && a.StudentId == studentId && !a.IsDeleted).OrderByDescending(a => a.AttendanceDate).Take(10).ToListAsync(ct);
+        var records = await _db.Set<AttendanceRecord>().Where(a => a.TenantId == tenantId && a.StudentId == studentId && !a.IsDeleted).OrderByDescending(a => a.AttendanceDate).ThenByDescending(a => a.Id).Take(10).ToListAsync(ct);
         int consecutive = 0;
-        var date = DateTime.UtcNow.Date;
-        foreach (var rec in records.OrderByDescending(r => r.AttendanceDate))
+        var start = DateTime.UtcNow.Date;
+        foreach (var rec in records)
         {
-            if (rec.Status == AttendanceStatus.Absent || rec.Status == AttendanceStatus.Sick)
-            {
-                // Check if consecutive day? Simplified: count consecutive absent records regardless of weekend
-                consecutive++;
-                date = rec.AttendanceDate.AddDays(-1);
-            }
-            else
-            {
-                break;
-            }
+            if (rec.Status != AttendanceStatus.Absent && rec.Status != AttendanceStatus.Sick) break;
+            consecutive++;
+            start = rec.AttendanceDate.Date;
         }
-        return consecutive;
+        var isCurrent = consecutive > 0 && records[0].AttendanceDate.Date >= DateTime.UtcNow.Date.AddDays(-CurrentStreakDays);
+        return new AbsenceStreak(consecutive, DateTime.SpecifyKind(start, DateTimeKind.Utc), isCurrent);
+    }
+
+    // Batches created by a rule for a student carry this filter, which identifies them later.
+    private static string RuleAudienceFilter(CommunicationRule rule, long? studentId) =>
+        System.Text.Json.JsonSerializer.Serialize(new { studentId, reason = rule.Code });
+
+    private Task<bool> AlreadyNotifiedAsync(CommunicationRule rule, long studentId, DateTime since, CancellationToken ct)
+    {
+        var filter = RuleAudienceFilter(rule, studentId);
+        return _db.Set<Messaging.Entities.MessageBatch>().AnyAsync(b => b.TenantId == rule.TenantId && b.AudienceFilterJson == filter && b.CreatedAt >= since, ct);
     }
 
     private async Task CreateBatchFromRuleAsync(CommunicationRule rule, TriggerRuleRequest trigger, CancellationToken ct)
@@ -504,8 +522,11 @@ public class CommunicationRuleEngine : ICommunicationRuleEngine
             Title = $"{rule.Name} - Auto triggered",
             TemplateId = rule.TemplateId,
             Channel = rule.Channel.ToLower() == "sms" ? Messaging.Entities.MessageChannel.Sms : Messaging.Entities.MessageChannel.Email,
-            AudienceType = (Messaging.Entities.AudienceType)Enum.Parse(typeof(Messaging.Entities.AudienceType), rule.AudienceType, true),
-            AudienceFilterJson = $"{{\"studentId\":{trigger.StudentId},\"reason\":\"{rule.Code}\"}}",
+            // Rules default to the audience "dynamic", which is not an AudienceType name and
+            // made every such rule fail here.
+            AudienceType = Enum.TryParse<Messaging.Entities.AudienceType>(rule.AudienceType, true, out var audience) && Enum.IsDefined(audience)
+                ? audience : Messaging.Entities.AudienceType.DynamicList,
+            AudienceFilterJson = RuleAudienceFilter(rule, trigger.StudentId),
             Body = template?.Body ?? $"Auto message for {rule.EventType}",
             Subject = template?.Subject,
             TotalRecipients = 1, // will be updated after audience resolution
@@ -528,6 +549,8 @@ public class CommunicationRuleEngine : ICommunicationRuleEngine
             {
                 var guardian = await _db.Set<Guardian>().FirstOrDefaultAsync(g => g.Id == link.GuardianId, ct);
                 if (guardian == null) continue;
+                // An email batch needs an email address (it used to fall back to the phone number).
+                if (batch.Channel == Messaging.Entities.MessageChannel.Email && string.IsNullOrWhiteSpace(guardian.Email)) continue;
 
                 // Respect opt-out
                 if (rule.RespectOptOut)
@@ -546,7 +569,7 @@ public class CommunicationRuleEngine : ICommunicationRuleEngine
                     GuardianId = guardian.Id,
                     StudentId = trigger.StudentId,
                     RecipientName = $"{guardian.FirstName} {guardian.LastName}",
-                    RecipientAddress = batch.Channel == Messaging.Entities.MessageChannel.Sms ? guardian.Phone : guardian.Email ?? guardian.Phone,
+                    RecipientAddress = batch.Channel == Messaging.Entities.MessageChannel.Sms ? guardian.Phone : guardian.Email!,
                     Channel = batch.Channel,
                     Status = Messaging.Entities.MessageStatus.Queued,
                     RenderedBody = batch.Body,
@@ -554,7 +577,60 @@ public class CommunicationRuleEngine : ICommunicationRuleEngine
                     Cost = 0.05m
                 });
             }
-            await _db.SaveChangesAsync(ct);
+        }
+
+        // These batches were saved as Queued but never handed to a sender.
+        batch.TotalRecipients = _db.ChangeTracker.Entries<Messaging.Entities.MessageDeliveryLog>().Count(e => e.State == EntityState.Added && e.Entity.BatchId == batch.Id);
+        if (batch.TotalRecipients == 0)
+        {
+            batch.Status = Messaging.Entities.MessageStatus.Cancelled;
+        }
+        else
+        {
+            _batchQueue.Enqueue(rule.TenantId, batch.Id);
+        }
+        await _db.SaveChangesAsync(ct);
+    }
+}
+
+// Runs time-based communication rules (e.g. fee reminders) every hour for all schools.
+public sealed class CommunicationRulesScheduledJob : LearnCloud.Infrastructure.Jobs.IScheduledJob
+{
+    public string Name => "communication-rules";
+    public TimeSpan Interval => TimeSpan.FromHours(1);
+
+    public Task RunAsync(IServiceProvider services, CancellationToken ct) =>
+        services.GetRequiredService<ICommunicationRuleEngine>().ProcessScheduledRulesAsync(ct);
+}
+
+// Reads numbers from the JSON settings of rules and segments. These used to be deserialised
+// into Dictionary<string, object>, whose JsonElement values Convert.ToInt32 cannot convert,
+// so every rule or saved segment with a setting failed.
+internal static class JsonSettings
+{
+    public static long? Long(string? json, string key) =>
+        long.TryParse(Raw(json, key), System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var value) ? value : null;
+
+    public static decimal? Decimal(string? json, string key) =>
+        decimal.TryParse(Raw(json, key), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var value) ? value : null;
+
+    private static string? Raw(string? json, string key)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object || !doc.RootElement.TryGetProperty(key, out var value)) return null;
+            return value.ValueKind switch
+            {
+                System.Text.Json.JsonValueKind.Number => value.GetRawText(),
+                System.Text.Json.JsonValueKind.String => value.GetString(),
+                _ => null,
+            };
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
         }
     }
 }

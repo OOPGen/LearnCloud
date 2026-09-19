@@ -25,7 +25,7 @@ public class MessagingBackgroundJob
         _noTenantOp = noTenantOp;
     }
 
-    // Entry point for Hangfire/Quartz: ProcessBatchAsync(batchId)
+    // Entry point for the durable job queue (SendMessageBatchJobHandler).
     // SECURITY FIX H3: Background jobs must set tenant context via BeginTenantScope
     // Uses explicit no-tenant to get batch's tenantId, then per-tenant scope
     public async Task ProcessBatchAsync(long batchId, CancellationToken ct = default)
@@ -64,8 +64,21 @@ public class MessagingBackgroundJob
         var rateLimitPerSecond = providerSettings?.RateLimitPerSecond ?? 10;
         var delayBetweenBatches = TimeSpan.FromSeconds(1.0 / rateLimitPerSecond * batchSize);
 
-        int sent = 0, delivered = 0, failed = 0;
+        // Totals come from the logs, so a batch resumed after a restart or retry counts the
+        // messages sent by earlier attempts too.
+        int sent = 0, failed = 0;
         decimal actualCost = 0m;
+        async Task RecountAsync()
+        {
+            var totals = await _db.Set<MessageDeliveryLog>()
+                .Where(l => l.BatchId == batchId && l.TenantId == batch.TenantId && !l.IsDeleted)
+                .GroupBy(l => l.Status)
+                .Select(g => new { Status = g.Key, Count = g.Count(), Cost = g.Sum(l => l.Cost) })
+                .ToListAsync(ct);
+            sent = totals.Where(t => t.Status == MessageStatus.Sent || t.Status == MessageStatus.Delivered).Sum(t => t.Count);
+            failed = totals.Where(t => t.Status == MessageStatus.Failed || t.Status == MessageStatus.Cancelled).Sum(t => t.Count);
+            actualCost = totals.Where(t => t.Status == MessageStatus.Sent || t.Status == MessageStatus.Delivered).Sum(t => t.Cost);
+        }
 
         foreach (var chunk in logs.Chunk(batchSize))
         {
@@ -82,7 +95,7 @@ public class MessagingBackgroundJob
                         log.Status = MessageStatus.Cancelled;
                         log.FailureReason = "Opted out SMS";
                         log.IsOptedOut = true;
-                        failed++;
+                        await _db.SaveChangesAsync(ct);
                         continue;
                     }
                     if (batch.Channel == MessageChannel.Email && (pref.EmailOptOut || !pref.EmailOptIn))
@@ -90,7 +103,7 @@ public class MessagingBackgroundJob
                         log.Status = MessageStatus.Cancelled;
                         log.FailureReason = "Opted out Email";
                         log.IsOptedOut = true;
-                        failed++;
+                        await _db.SaveChangesAsync(ct);
                         continue;
                     }
                 }
@@ -121,20 +134,18 @@ public class MessagingBackgroundJob
                                 log.ProviderReference = result.ProviderReference;
                                 log.Cost = result.Cost;
                                 log.Currency = result.Currency;
-                                log.DeliveredAt = DateTime.UtcNow; // assume delivered for mock, real would be callback
+                                log.DeliveredAt = DateTime.UtcNow; // accepted by the provider; no delivery receipts yet
                                 success = true;
-                                sent++;
-                                delivered++;
-                                actualCost += result.Cost;
                                 break;
                             }
                             else
                             {
                                 log.FailureReason = result.FailureReason;
+                                if (!result.IsTransient) break; // e.g. no SMS provider: retrying cannot help
                                 if (attempt < maxRetries)
                                 {
                                     var backoff = TimeSpan.FromSeconds(Math.Pow(2, attempt));
-                                    _logger.LogInformation("SMS send failed for {Recipient}, retry {Attempt} after {Backoff}s", log.RecipientAddress, attempt + 1, backoff.TotalSeconds);
+                                    _logger.LogInformation("SMS send failed for log {LogId}, retry {Attempt} after {Backoff}s", log.Id, attempt + 1, backoff.TotalSeconds);
                                     await Task.Delay(backoff, ct);
                                 }
                             }
@@ -154,14 +165,12 @@ public class MessagingBackgroundJob
                                 log.Currency = result.Currency;
                                 log.DeliveredAt = DateTime.UtcNow;
                                 success = true;
-                                sent++;
-                                delivered++;
-                                actualCost += result.Cost;
                                 break;
                             }
                             else
                             {
                                 log.FailureReason = result.FailureReason;
+                                if (!result.IsTransient) break; // e.g. a rejected address
                                 if (attempt < maxRetries)
                                 {
                                     var backoff = TimeSpan.FromSeconds(Math.Pow(2, attempt));
@@ -170,7 +179,7 @@ public class MessagingBackgroundJob
                             }
                         }
                     }
-                    catch (Exception ex)
+                    catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
                     {
                         log.FailureReason = ex.Message;
                         _logger.LogError(ex, "Exception sending message {LogId} attempt {Attempt}", log.Id, attempt);
@@ -182,17 +191,15 @@ public class MessagingBackgroundJob
                 }
 
                 if (!success)
-                {
                     log.Status = MessageStatus.Failed;
-                    failed++;
-                }
 
                 await _db.SaveChangesAsync(ct);
             }
 
             // Update batch progress
+            await RecountAsync();
             batch.SentCount = sent;
-            batch.DeliveredCount = delivered;
+            batch.DeliveredCount = sent;
             batch.FailedCount = failed;
             batch.ActualCost = Math.Round(actualCost, 2, MidpointRounding.AwayFromZero);
             batch.ProgressPercent = batch.TotalRecipients > 0 ? (int)((double)(sent + failed) / batch.TotalRecipients * 100) : 100;
@@ -223,6 +230,11 @@ public class MessagingBackgroundJob
             await _db.SaveChangesAsync(ct);
         }
 
+        await RecountAsync();
+        batch.SentCount = sent;
+        batch.DeliveredCount = sent;
+        batch.FailedCount = failed;
+        batch.ActualCost = Math.Round(actualCost, 2, MidpointRounding.AwayFromZero);
         batch.Status = failed == batch.TotalRecipients ? MessageStatus.Failed : MessageStatus.Sent;
         batch.CompletedAt = DateTime.UtcNow;
         batch.ProgressPercent = 100;

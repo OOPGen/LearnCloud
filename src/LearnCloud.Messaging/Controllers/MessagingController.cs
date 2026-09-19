@@ -295,11 +295,9 @@ public class MessagingController : ControllerBase
 
         batch.Status = MessageStatus.Queued;
         batch.QueuedAt = DateTime.UtcNow;
+        // The send job is saved with the status change, and sent by the background job worker.
+        _sp.GetRequiredService<Jobs.IMessageBatchQueue>().Enqueue(TenantId, batch.Id);
         await _db.SaveChangesAsync(ct);
-
-        // Sent by MessagingQueueWorker in its own scope. The previous Task.Run reused this
-        // request's DbContext after the request ended and discarded every exception.
-        await _sp.GetRequiredService<Jobs.IMessageBatchQueue>().EnqueueAsync(batch.Id, ct);
 
         return Ok(new { message = "Batch queued for sending", batchId = batch.Id, status = batch.Status.ToString() });
     }

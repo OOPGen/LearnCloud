@@ -17,6 +17,7 @@ COPY src/LearnCloud.Examinations/*.csproj src/LearnCloud.Examinations/
 COPY src/LearnCloud.Fees/*.csproj src/LearnCloud.Fees/
 COPY src/LearnCloud.Finance/*.csproj src/LearnCloud.Finance/
 COPY src/LearnCloud.HR/*.csproj src/LearnCloud.HR/
+COPY src/LearnCloud.Infrastructure/*.csproj src/LearnCloud.Infrastructure/
 COPY src/LearnCloud.Hostel/*.csproj src/LearnCloud.Hostel/
 COPY src/LearnCloud.Library/*.csproj src/LearnCloud.Library/
 COPY src/LearnCloud.Messaging/*.csproj src/LearnCloud.Messaging/

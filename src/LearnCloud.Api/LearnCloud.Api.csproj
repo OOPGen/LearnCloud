@@ -32,6 +32,7 @@
     <ProjectReference Include="..\LearnCloud.Fees\LearnCloud.Fees.csproj" />
     <ProjectReference Include="..\LearnCloud.Finance\LearnCloud.Finance.csproj" />
     <ProjectReference Include="..\LearnCloud.HR\LearnCloud.HR.csproj" />
+    <ProjectReference Include="..\LearnCloud.Infrastructure\LearnCloud.Infrastructure.csproj" />
     <ProjectReference Include="..\LearnCloud.Hostel\LearnCloud.Hostel.csproj" />
     <ProjectReference Include="..\LearnCloud.Library\LearnCloud.Library.csproj" />
     <ProjectReference Include="..\LearnCloud.Messaging\LearnCloud.Messaging.csproj" />

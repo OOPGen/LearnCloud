@@ -78,19 +78,15 @@ public class AttendanceService : IAttendanceService
         var grade = await _db.Set<Grade>().FirstOrDefaultAsync(g => g.Id == req.GradeId && g.TenantId == tenantId, ct) ?? throw new InvalidOperationException("Grade not found");
         var stream = await _db.Set<ClassStream>().FirstOrDefaultAsync(s => s.Id == req.StreamId && s.TenantId == tenantId, ct) ?? throw new InvalidOperationException("Stream not found");
 
-        // Get students for class (current enrolment is_current true)
+        // The class list is the students whose current enrolment is in this class. An
+        // enrolment's TermId is the term the student joined in, so filtering on the register's
+        // term dropped everyone who joined in an earlier term. The fallback to students by
+        // grade and stream is gone too: it listed students who had left the school.
         var students = await _db.Set<Student>().Where(s => s.TenantId == tenantId && !s.IsDeleted)
-            .Join(_db.Set<StudentEnrolment>().Where(e => e.TenantId == tenantId && e.GradeId == req.GradeId && e.StreamId == req.StreamId && e.AcademicYearId == req.AcademicYearId && e.TermId == req.TermId && e.IsCurrent && !e.IsDeleted),
+            .Join(_db.Set<StudentEnrolment>().Where(e => e.TenantId == tenantId && e.GradeId == req.GradeId && e.StreamId == req.StreamId && e.AcademicYearId == req.AcademicYearId && e.IsCurrent && !e.IsDeleted),
                 s => s.Id, e => e.StudentId, (s, e) => s)
             .OrderBy(s => s.LastName).ThenBy(s => s.FirstName)
             .ToListAsync(ct);
-
-        // If no enrolment records (demo), fallback to students by grade/stream
-        if (!students.Any())
-        {
-            students = await _db.Set<Student>().Where(s => s.TenantId == tenantId && s.GradeId == req.GradeId && s.StreamId == req.StreamId && !s.IsDeleted)
-                .OrderBy(s => s.LastName).ToListAsync(ct);
-        }
 
         var register = await _db.Set<AttendanceRegister>()
             .FirstOrDefaultAsync(r => r.TenantId == tenantId && r.GradeId == req.GradeId && r.StreamId == req.StreamId && r.AttendanceDate == req.AttendanceDate.Date && r.PeriodNumber == req.PeriodNumber && r.AcademicYearId == req.AcademicYearId && r.TermId == req.TermId && !r.IsDeleted, ct);
@@ -341,11 +337,7 @@ public class AttendanceService : IAttendanceService
             .Join(_db.Set<StudentEnrolment>().Where(e => e.TenantId == tenantId && e.GradeId == req.GradeId && e.StreamId == req.StreamId && e.AcademicYearId == req.AcademicYearId && e.IsCurrent && !e.IsDeleted),
                 s => s.Id, e => e.StudentId, (s, e) => s)
             .OrderBy(s => s.LastName).ToListAsync(ct);
-
-        if (!students.Any())
-        {
-            students = await _db.Set<Student>().Where(s => s.TenantId == tenantId && s.GradeId == req.GradeId && s.StreamId == req.StreamId && !s.IsDeleted).OrderBy(s => s.LastName).ToListAsync(ct);
-        }
+        // No fallback to students by grade and stream: it listed students who had left.
 
         var daysInMonth = DateTime.DaysInMonth(req.Year, req.Month);
         var dates = Enumerable.Range(1, daysInMonth).Select(d => new DateTime(req.Year, req.Month, d)).ToList();

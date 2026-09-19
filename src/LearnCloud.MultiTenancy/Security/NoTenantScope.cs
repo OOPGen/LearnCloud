@@ -49,8 +49,14 @@ public class NoTenantOperation : INoTenantOperation
         if (string.IsNullOrWhiteSpace(reason) || reason.Length < 10)
             throw new ArgumentException("No-tenant operation requires reason >=10 chars for audit");
 
-        _logger.LogCritical("EXPLICIT NO-TENANT SCOPE: Reason={Reason} Actor={ActorUserId} Role={Role} Stack={Stack}",
-            reason, actorUserId, actorRole, Environment.StackTrace);
+        // Scheduled and background jobs open these scopes all the time; logging each one as
+        // Critical (with a stack trace) buried real alerts. Jobs log at Information, people
+        // (platform staff) at Warning. Every scope is still written to the audit log below.
+        if (actorRole == PrivilegedRoles.SystemJob)
+            _logger.LogInformation("No-tenant scope for system job: {Reason}", reason);
+        else
+            _logger.LogWarning("EXPLICIT NO-TENANT SCOPE: Reason={Reason} Actor={ActorUserId} Role={Role} Stack={Stack}",
+                reason, actorUserId, actorRole, Environment.StackTrace);
 
         // Audit log the explicit scope creation
         var audit = new AuditLog

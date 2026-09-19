@@ -8,8 +8,9 @@
 // Worker variables (Workers & Pages > learncloud-app > Settings > Variables and Secrets):
 //   API_ORIGIN   required, e.g. https://learncloud-api-production.up.railway.app
 //   ROOT_DOMAIN  optional, e.g. learncloud.co.zw; enables school-from-subdomain
-//   API_PROXY_SECRET  recommended; the same value as Proxy__SharedSecret on the API, so
-//                     the API can trust the client IP this proxy reports
+//   API_PROXY_SECRET  secret; the same value as Proxy__SharedSecret on the API, so the API
+//                     trusts the client IP this proxy reports and, with
+//                     Proxy__RequireSecret, accepts only requests from the Workers
 
 const RESERVED_SUBDOMAINS = new Set(['www', 'app', 'api', 'admin', 'platform']);
 
@@ -56,9 +57,9 @@ export async function proxyApiRequest(request, env) {
   else headers.delete('x-forwarded-for');
   headers.set('x-forwarded-proto', 'https');
   headers.set('x-forwarded-host', incoming.host);
-  if (env.API_PROXY_SECRET && clientIp) {
+  if (env.API_PROXY_SECRET) {
     headers.set('x-learncloud-proxy-key', env.API_PROXY_SECRET);
-    headers.set('x-learncloud-client-ip', clientIp);
+    if (clientIp) headers.set('x-learncloud-client-ip', clientIp);
   }
 
   const hasBody = !['GET', 'HEAD'].includes(request.method);

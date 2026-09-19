@@ -25,9 +25,7 @@ public interface IHostelService
     Task ApplyBoardingFeeAsync(long tenantId, long userId, long allocationId, CancellationToken ct = default);
 
     // Exeat and leave register
-    Task<ExeatDto> CreateExeatAsync(long tenantId, long userId, CreateExeatRequest req, CancellationToken ct = default);
-    Task<ExeatDto> ReturnFromLeaveAsync(long tenantId, long userId, long exeatId, ReturnFromLeaveRequest req, CancellationToken ct = default);
-    Task<List<ExeatDto>> GetOnLeaveAsync(long tenantId, CancellationToken ct = default);
+
 
     // Roll call
     Task<RollCallDto> CreateRollCallAsync(long tenantId, long userId, CreateRollCallRequest req, CancellationToken ct = default);
@@ -86,6 +84,10 @@ public class HostelService : IHostelService
     public async Task<BedDto> CreateBedAsync(long tenantId, long userId, CreateBedRequest req, CancellationToken ct = default)
     {
         var room = await _db.Set<HostelRoom>().FirstOrDefaultAsync(r => r.Id == req.RoomId && r.TenantId == tenantId && !r.IsDeleted, ct) ?? throw new InvalidOperationException("Room not found");
+        // Rooms create their beds (101A, 101B, ...) when they are added; a second bed with the
+        // same number would make allocations and roll calls ambiguous.
+        if (await _db.Set<HostelBed>().AnyAsync(b => b.TenantId == tenantId && b.RoomId == req.RoomId && b.BedNumber == req.BedNumber && !b.IsDeleted, ct))
+            throw new InvalidOperationException($"Bed {req.BedNumber} already exists in room {room.RoomNumber}.");
         var bed = new HostelBed { TenantId = tenantId, RoomId = req.RoomId, BlockId = room.BlockId, BedNumber = req.BedNumber, Status = "available", Condition = req.Condition, CreatedBy = userId };
         _db.Set<HostelBed>().Add(bed);
         await _db.SaveChangesAsync(ct);
@@ -250,13 +252,141 @@ public class HostelService : IHostelService
         await _db.SaveChangesAsync(ct);
     }
 
-    // Other methods simplified for brevity - would implement full logic in real app
-    public Task<ExeatDto> CreateExeatAsync(long tenantId, long userId, CreateExeatRequest req, CancellationToken ct = default) => throw new NotImplementedException();
-    public Task<ExeatDto> ReturnFromLeaveAsync(long tenantId, long userId, long exeatId, ReturnFromLeaveRequest req, CancellationToken ct = default) => throw new NotImplementedException();
-    public Task<List<ExeatDto>> GetOnLeaveAsync(long tenantId, CancellationToken ct = default) => throw new NotImplementedException();
-    public Task<RollCallDto> CreateRollCallAsync(long tenantId, long userId, CreateRollCallRequest req, CancellationToken ct = default) => throw new NotImplementedException();
-    public Task<RollCallDto> MarkRollCallAsync(long tenantId, long userId, long rollCallId, MarkRollCallRequest req, CancellationToken ct = default) => throw new NotImplementedException();
-    public Task<OccupancyReportDto> GetOccupancyReportAsync(long tenantId, long? blockId, CancellationToken ct = default) => throw new NotImplementedException();
+    // Exeats are handled by HostelController directly. The roll call and occupancy methods
+    // below used to throw NotImplementedException, so their endpoints always failed with 500.
+
+    private static readonly string[] RollCallTypes = { "nightly", "morning", "evening" };
+    private static readonly string[] RollCallStatuses = { "present", "absent", "on_leave", "sick_bay" };
+
+    // Lists every student with an active bed in the block (or room). Students away on an
+    // exeat start as on_leave; everyone else starts as absent until marked, so an unmarked
+    // student is never counted as present.
+    public async Task<RollCallDto> CreateRollCallAsync(long tenantId, long userId, CreateRollCallRequest req, CancellationToken ct = default)
+    {
+        var type = (req.RollCallType ?? "").Trim().ToLowerInvariant();
+        if (!RollCallTypes.Contains(type)) throw new InvalidOperationException("Roll call type must be nightly, morning or evening.");
+        var block = await _db.Set<HostelBlock>().FirstOrDefaultAsync(b => b.TenantId == tenantId && b.Id == req.BlockId && !b.IsDeleted, ct)
+            ?? throw new InvalidOperationException("Block not found");
+        HostelRoom? room = null;
+        if (req.RoomId is long roomId)
+            room = await _db.Set<HostelRoom>().FirstOrDefaultAsync(r => r.TenantId == tenantId && r.Id == roomId && r.BlockId == block.Id && !r.IsDeleted, ct)
+                ?? throw new InvalidOperationException("Room not found");
+
+        var date = req.RollCallDate.Date;
+        if (await _db.Set<RollCall>().AnyAsync(r => r.TenantId == tenantId && r.BlockId == block.Id && r.RoomId == req.RoomId && r.RollCallDate == date && r.RollCallType == type && r.Status != "cancelled" && !r.IsDeleted, ct))
+            throw new InvalidOperationException($"A {type} roll call for {block.Name} on {date:yyyy-MM-dd} already exists.");
+
+        var allocations = await _db.Set<BedAllocation>()
+            .Where(a => a.TenantId == tenantId && a.BlockId == block.Id && a.Status == "active" && !a.IsDeleted && (req.RoomId == null || a.RoomId == req.RoomId))
+            .ToListAsync(ct);
+        var studentIds = allocations.Select(a => a.StudentId).ToList();
+        var now = DateTime.UtcNow;
+        var onLeave = await _db.Set<ExeatRegister>()
+            .Where(e => e.TenantId == tenantId && studentIds.Contains(e.StudentId) && e.ActualReturnDateTime == null && e.DepartureDateTime <= now
+                        && (e.Status == "approved" || e.Status == "departed" || e.Status == "overdue") && !e.IsDeleted)
+            .Select(e => e.StudentId).Distinct().ToListAsync(ct);
+
+        var rollCall = new RollCall
+        {
+            TenantId = tenantId, BlockId = block.Id, RoomId = room?.Id, RollCallDate = date, RollCallType = type,
+            Status = "in_progress", ConductedByUserId = userId, CreatedBy = userId,
+        };
+        foreach (var a in allocations)
+        {
+            rollCall.Entries.Add(new RollCallEntry
+            {
+                TenantId = tenantId, BlockId = block.Id, RoomId = a.RoomId, BedId = a.BedId, StudentId = a.StudentId,
+                RollCallDate = date, Status = onLeave.Contains(a.StudentId) ? "on_leave" : "absent", MarkedByUserId = 0,
+            });
+        }
+        Recount(rollCall);
+        _db.Set<RollCall>().Add(rollCall);
+        await _db.SaveChangesAsync(ct);
+        return ToDto(rollCall, block.Name, room?.RoomNumber);
+    }
+
+    public async Task<RollCallDto> MarkRollCallAsync(long tenantId, long userId, long rollCallId, MarkRollCallRequest req, CancellationToken ct = default)
+    {
+        var rollCall = await _db.Set<RollCall>().Include(r => r.Entries)
+            .FirstOrDefaultAsync(r => r.TenantId == tenantId && r.Id == rollCallId && !r.IsDeleted, ct)
+            ?? throw new InvalidOperationException("Roll call not found");
+        if (rollCall.Status != "in_progress")
+            throw new InvalidOperationException($"This roll call is {rollCall.Status} and can no longer be marked.");
+        if (req.Entries is null || req.Entries.Count == 0)
+            throw new InvalidOperationException("Mark at least one student.");
+
+        foreach (var mark in req.Entries)
+        {
+            var status = (mark.Status ?? "").Trim().ToLowerInvariant();
+            if (!RollCallStatuses.Contains(status))
+                throw new InvalidOperationException("Status must be present, absent, on_leave or sick_bay.");
+            var entry = rollCall.Entries.FirstOrDefault(e => e.StudentId == mark.StudentId && e.BedId == mark.BedId && !e.IsDeleted)
+                ?? throw new InvalidOperationException($"Student {mark.StudentId} in bed {mark.BedId} is not on this roll call.");
+            entry.Status = status;
+            entry.Notes = string.IsNullOrWhiteSpace(mark.Notes) ? null : mark.Notes.Trim();
+            entry.MarkedByUserId = userId;
+            entry.UpdatedBy = userId;
+        }
+
+        Recount(rollCall);
+        // Complete once every student has been marked by someone.
+        if (rollCall.Entries.Where(e => !e.IsDeleted).All(e => e.MarkedByUserId != 0))
+        {
+            rollCall.Status = "completed";
+            rollCall.CompletedAt = DateTime.UtcNow;
+        }
+        rollCall.UpdatedBy = userId;
+        await _db.SaveChangesAsync(ct);
+
+        var blockName = await _db.Set<HostelBlock>().Where(b => b.TenantId == tenantId && b.Id == rollCall.BlockId).Select(b => b.Name).FirstOrDefaultAsync(ct) ?? "";
+        var roomNumber = rollCall.RoomId is long rid
+            ? await _db.Set<HostelRoom>().Where(r => r.TenantId == tenantId && r.Id == rid).Select(r => r.RoomNumber).FirstOrDefaultAsync(ct)
+            : null;
+        return ToDto(rollCall, blockName, roomNumber);
+    }
+
+    private static void Recount(RollCall rollCall)
+    {
+        var entries = rollCall.Entries.Where(e => !e.IsDeleted).ToList();
+        rollCall.TotalExpected = entries.Count;
+        rollCall.TotalPresent = entries.Count(e => e.Status == "present");
+        rollCall.TotalOnLeave = entries.Count(e => e.Status == "on_leave");
+        rollCall.TotalAbsent = entries.Count(e => e.Status == "absent");
+    }
+
+    private static RollCallDto ToDto(RollCall r, string blockName, string? roomNumber) =>
+        new(r.Id, r.BlockId, blockName, r.RoomId, roomNumber, r.RollCallDate, r.RollCallType, r.Status, r.TotalExpected, r.TotalPresent, r.TotalAbsent, r.TotalOnLeave, r.ConductedByUserId);
+
+    // Bed counts by status for one block, or for all blocks together when no block is given.
+    public async Task<OccupancyReportDto> GetOccupancyReportAsync(long tenantId, long? blockId, CancellationToken ct = default)
+    {
+        var blocks = await _db.Set<HostelBlock>().Where(b => b.TenantId == tenantId && !b.IsDeleted && (blockId == null || b.Id == blockId)).ToListAsync(ct);
+        if (blockId.HasValue && blocks.Count == 0) throw new InvalidOperationException("Block not found");
+        var blockIds = blocks.Select(b => b.Id).ToList();
+
+        var rooms = await _db.Set<HostelRoom>().Where(r => r.TenantId == tenantId && blockIds.Contains(r.BlockId) && !r.IsDeleted)
+            .OrderBy(r => r.BlockId).ThenBy(r => r.RoomNumber).ToListAsync(ct);
+        var beds = await _db.Set<HostelBed>().Where(b => b.TenantId == tenantId && blockIds.Contains(b.BlockId) && !b.IsDeleted)
+            .Select(b => new { b.RoomId, b.Status }).ToListAsync(ct);
+
+        int Count(params string[] statuses) => beds.Count(b => statuses.Contains(b.Status));
+        var capacity = beds.Count;
+        var occupied = Count("occupied");
+        var codes = blocks.ToDictionary(b => b.Id, b => b.Code);
+        var roomDtos = rooms.Select(r =>
+        {
+            var roomBeds = beds.Where(b => b.RoomId == r.Id).ToList();
+            var label = blockId.HasValue ? r.RoomNumber : $"{codes.GetValueOrDefault(r.BlockId)} {r.RoomNumber}";
+            return new RoomOccupancyDto(r.Id, label, roomBeds.Count, roomBeds.Count(b => b.Status == "occupied"), roomBeds.Count(b => b.Status == "available"));
+        }).ToList();
+
+        return new OccupancyReportDto(
+            blockId ?? 0,
+            blockId.HasValue ? blocks[0].Name : "All blocks",
+            capacity, occupied, Count("available"), Count("reserved"), Count("maintenance", "out_of_order"),
+            capacity == 0 ? 0m : Math.Round(occupied * 100m / capacity, 1),
+            roomDtos);
+    }
 }
 
 

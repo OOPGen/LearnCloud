@@ -1,12 +1,19 @@
-// Cloudflare Worker for the LearnCloud marketing site: static files only.
-// Deploy from this folder with `npx wrangler@4.131.2 deploy`. See docs/DEPLOYMENT.md, section 3.
+// Cloudflare Worker for the LearnCloud marketing site: static files, plus a small proxy for
+// the demo and contact forms. Deploy from this folder with `npx wrangler@4.131.2 deploy`.
+// See docs/DEPLOYMENT.md, section 3.
 {
   "name": "learncloud",
+  "main": "worker/index.js",
   "compatibility_date": "2026-09-11",
   "assets": {
     "directory": "./public",
+    "binding": "ASSETS",
     // The site routes pages such as /pricing in the browser, so they must return index.html.
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // Only the form submission needs the Worker.
+    "run_worker_first": ["/api/*"]
   },
+  // API_ORIGIN (and the API_PROXY_SECRET secret) are set on the Worker in the dashboard.
+  "keep_vars": true,
   "observability": { "enabled": true }
 }

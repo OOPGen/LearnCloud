@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Shared platform services used by several modules: the durable background job queue
+    and schedules, email delivery, and CSV writing. It sits on top of MultiTenancy (the
+    database context and tenant scopes); feature modules reference it where they need it.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MailKit" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LearnCloud.MultiTenancy\LearnCloud.MultiTenancy.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="LearnCloud.UnitTests" />
+    <InternalsVisibleTo Include="LearnCloud.IntegrationTests" />
+  </ItemGroup>
+
+</Project>

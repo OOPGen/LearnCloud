@@ -469,7 +469,7 @@ public class FinanceController : ControllerBase
     {
         EnsureCanReport();
         // Fee collection = sum fee payments (existing fee entities without altering them) + other income
-        var feePayments = await _db.Set<Payment>().Where(p => p.TenantId == TenantId && p.PaymentDate >= from && p.PaymentDate <= to && !p.IsDeleted && p.Status.ToString() != "Reversed").SumAsync(p => p.Amount, ct);
+        var feePayments = await _db.Set<Payment>().Where(p => p.TenantId == TenantId && p.PaymentDate >= from && p.PaymentDate <= to && !p.IsDeleted && p.Status != PaymentStatus.Reversed).SumAsync(p => p.Amount, ct);
         var expenses = await _db.Set<Expense>().Where(e => e.TenantId == TenantId && e.ExpenseDate >= from && e.ExpenseDate <= to && e.Status == "approved" && !e.IsDeleted).SumAsync(e => e.Amount, ct);
 
         var (totalIncome, totalExpenditure, net) = _calc.CalculateIncomeExpenditure(feePayments, 0m, expenses);

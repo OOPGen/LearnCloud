@@ -1,7 +1,6 @@
 using Asp.Versioning;
 using FluentValidation;
 using LearnCloud.AI.Extensions;
-using LearnCloud.Api.BackgroundJobs;
 using LearnCloud.Api.Filters;
 using LearnCloud.Api.Hosting;
 using LearnCloud.Api.Middleware;
@@ -13,6 +12,7 @@ using LearnCloud.Examinations.Extensions;
 using LearnCloud.Fees.Extensions;
 using LearnCloud.Finance.Extensions;
 using LearnCloud.HR.Extensions;
+using LearnCloud.Infrastructure;
 using LearnCloud.Hostel.Extensions;
 using LearnCloud.Library.Extensions;
 using LearnCloud.Messaging.Extensions;
@@ -76,6 +76,8 @@ builder.Host.UseDefaultServiceProvider(options =>
 
 // Data and identity
 builder.Services.AddLearnCloudMultiTenancy(builder.Configuration, migrationsAssembly: typeof(Program).Assembly.GetName().Name!);
+// Durable background jobs and schedules (Jobs:Enabled), email delivery (Email:Provider).
+builder.Services.AddLearnCloudInfrastructure(builder.Configuration);
 builder.Services.AddLearnCloudAuth(builder.Configuration);
 
 // Feature modules
@@ -103,12 +105,9 @@ builder.Services
 foreach (var moduleAssembly in LearnCloudModel.Assemblies)
     builder.Services.AddValidatorsFromAssembly(moduleAssembly);
 
-if (builder.Configuration.GetValue("Jobs:Enabled", true))
-    builder.Services.AddHostedService<ScheduledJobsWorker>();
-
 // CORS - explicit origins from configuration (Cors:AllowedOrigins), no wildcard hosts
-// beyond the ones listed. The web app is served same-origin through the Cloudflare
-// Pages proxy and does not need CORS; this is for other browser clients.
+// beyond the ones listed. The web app is served same-origin through its Cloudflare
+// Worker proxy and does not need CORS; this is for other browser clients.
 // Local Vite origins are the fallback only in Development; elsewhere no origin is allowed
 // unless configured.
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() is { Length: > 0 } configured

@@ -1,4 +1,5 @@
 using LearnCloud.Core.DTOs;
+using LearnCloud.Infrastructure.Text;
 
 using LearnCloud.Domain.Entities;
 using LearnCloud.MultiTenancy.Context;
@@ -185,16 +186,14 @@ public class SubjectService : ISubjectService
     }
 
     public async Task<byte[]> ExportCsvAsync(long tenantId, SubjectListRequest req, CancellationToken ct = default)
-    // PERFORMANCE FIX H6: For large exports (students 2000) should use IAsyncEnumerable streaming, not StringBuilder loading all into memory
-    // For subjects (small, <100), StringBuilder okay. For students export, use streaming FileStreamResult
     {
+        // CsvWriter quotes every value and neutralises spreadsheet formulas; names and
+        // descriptions used to be written as they were, so "=HYPERLINK(...)" would run in Excel.
         var result = await GetListAsync(tenantId, req with { Page = 1, PageSize = 1000 }, ct);
-        var csv = new System.Text.StringBuilder();
-        csv.AppendLine("Id,Name,Code,Description,IsCore,Department,Status,GradesOffered,CreatedAt");
-        foreach (var item in result.Items)
-        {
-            csv.AppendLine($"{item.Id},\"{item.Name}\",{item.Code},\"{item.Description}\",{item.IsCore},{item.Department},{item.Status},{item.GradesOffered},{item.CreatedAt:yyyy-MM-dd}");
-        }
-        return System.Text.Encoding.UTF8.GetBytes(csv.ToString());
+        var lines = new List<string> { CsvWriter.Row("Id", "Name", "Code", "Description", "IsCore", "Department", "Status", "GradesOffered", "CreatedAt") };
+        lines.AddRange(result.Items.Select(item => CsvWriter.Row(
+            item.Id.ToString(), item.Name, item.Code, item.Description, item.IsCore ? "true" : "false", item.Department, item.Status,
+            item.GradesOffered.ToString(), item.CreatedAt.ToString("yyyy-MM-dd"))));
+        return CsvWriter.ToUtf8(lines);
     }
 }

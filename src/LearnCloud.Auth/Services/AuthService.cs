@@ -326,12 +326,10 @@ public class AuthService : IAuthService
 
     public async Task<EmailVerificationResponse> VerifyEmailAsync(VerifyEmailRequest req, CancellationToken ct = default)
     {
-        var user = await _db.Set<User>().FirstOrDefaultAsync(u=>u.Email==req.Email.ToLower() && !u.IsDeleted, ct);
-        if (user == null) throw new InvalidOperationException("Invalid token"); // same message for security
-
-        var hashed = _tokenService.HashToken(req.Token);
-        var token = await _db.Set<UserToken>().FirstOrDefaultAsync(t=>t.UserId==user.Id && t.TokenType==UserTokenType.EmailVerification && t.TokenHash==hashed && !t.IsDeleted, ct);
-        if (token == null || token.IsUsed || token.ExpiresAt < DateTime.UtcNow)
+        // The token identifies the account. Looking the user up by email first picked an
+        // arbitrary account when the same address belongs to users of several schools.
+        var (user, token) = await FindTokenAsync(req.Email, req.Token, UserTokenType.EmailVerification, ct);
+        if (user == null || token == null || token.IsUsed || token.ExpiresAt < DateTime.UtcNow)
             throw new InvalidOperationException("Invalid or expired token");
 
         token.UsedAt = DateTime.UtcNow;
@@ -364,7 +362,9 @@ public class AuthService : IAuthService
             if (user != null)
             {
                 // Invalidate old reset tokens
-                var oldTokens = await _db.Set<UserToken>().Where(t=>t.UserId==user.Id && t.TokenType==UserTokenType.PasswordReset && !t.IsUsed && !t.IsDeleted).ToListAsync(ct);
+                // UsedAt, not IsUsed: IsUsed is not a column, and the untranslatable query made
+                // this endpoint fail (500) exactly when the account existed.
+                var oldTokens = await _db.Set<UserToken>().Where(t=>t.UserId==user.Id && t.TokenType==UserTokenType.PasswordReset && t.UsedAt == null && !t.IsDeleted).ToListAsync(ct);
                 foreach (var ot in oldTokens) ot.IsDeleted=true;
 
                 var raw = _tokenService.GenerateOpaqueToken(32);
@@ -404,12 +404,8 @@ public class AuthService : IAuthService
 
     public async Task<EmailVerificationResponse> ResetPasswordAsync(ResetPasswordRequest req, string ip, CancellationToken ct = default)
     {
-        var user = await _db.Set<User>().FirstOrDefaultAsync(u=>u.Email==req.Email.ToLower() && !u.IsDeleted, ct);
-        if (user == null) throw new InvalidOperationException("Invalid token");
-
-        var hashed = _tokenService.HashToken(req.Token);
-        var token = await _db.Set<UserToken>().FirstOrDefaultAsync(t=>t.UserId==user.Id && t.TokenType==UserTokenType.PasswordReset && t.TokenHash==hashed && !t.IsDeleted, ct);
-        if (token == null || token.IsUsed || token.ExpiresAt < DateTime.UtcNow)
+        var (user, token) = await FindTokenAsync(req.Email, req.Token, UserTokenType.PasswordReset, ct);
+        if (user == null || token == null || token.IsUsed || token.ExpiresAt < DateTime.UtcNow)
             throw new InvalidOperationException("Invalid or expired token");
 
         // Policy check
@@ -433,6 +429,17 @@ public class AuthService : IAuthService
         await _db.SaveChangesAsync(ct);
         _logger.LogInformation("Password reset completed for user {UserId} ip {Ip}", user.Id, ip);
         return new EmailVerificationResponse(true, "Password reset successful");
+    }
+
+    private async Task<(User? User, UserToken? Token)> FindTokenAsync(string email, string rawToken, UserTokenType type, CancellationToken ct)
+    {
+        var hashed = _tokenService.HashToken(rawToken);
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        var match = await _db.Set<UserToken>()
+            .Where(t => t.TokenHash == hashed && t.TokenType == type && !t.IsDeleted)
+            .Join(_db.Set<User>().Where(u => u.Email == normalizedEmail && !u.IsDeleted), t => t.UserId, u => u.Id, (t, u) => new { Token = t, User = u })
+            .FirstOrDefaultAsync(ct);
+        return (match?.User, match?.Token);
     }
 
     public async Task ChangePasswordAsync(long userId, ChangePasswordRequest req, CancellationToken ct = default)
@@ -554,27 +561,5 @@ public class AuthService : IAuthService
             _logger.LogInformation("Max sessions ({Max}) exceeded for user {UserId}; revoked family {Family}", maxFamilies, userId, stale.FamilyId);
         }
         await _db.SaveChangesAsync(ct);
-    }
-}
-
-public class FakeEmailSender : IEmailSender
-{
-    private readonly ILogger<FakeEmailSender> _logger;
-    public FakeEmailSender(ILogger<FakeEmailSender> logger){ _logger=logger; }
-    public Task SendEmailVerificationAsync(string email, string displayName, string rawToken, long? tenantId)
-    {
-        _logger.LogInformation("[FAKE EMAIL] Verification to {Email} token length {Len} tenant {Tenant} - link: https://{Tenant}.learncloud.co.zw/verify?email={Email}&token={Token} **NEVER LOG TOKEN IN PROD**", email, rawToken.Length, tenantId, tenantId, email, "[REDACTED]");
-        // In dev, you could log partially but spec says never log tokens - we redact
-        return Task.CompletedTask;
-    }
-    public Task SendPasswordResetAsync(string email, string displayName, string rawToken, long? tenantId)
-    {
-        _logger.LogInformation("[FAKE EMAIL] Reset to {Email} tenant {Tenant} link https://learncloud.co.zw/reset?email={Email}&token=[REDACTED]", email, tenantId, email);
-        return Task.CompletedTask;
-    }
-    public Task SendWelcomeAsync(string email, string displayName, long? tenantId)
-    {
-        _logger.LogInformation("[FAKE EMAIL] Welcome to {Email}", email);
-        return Task.CompletedTask;
     }
 }

@@ -72,7 +72,7 @@ a:focus-visible,button:focus-visible{outline:2px solid #0F153A;outline-offset:2p
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script>
-const DEMO_ENDPOINT = window.DEMO_ENDPOINT || "https://api.learncloud.co.zw/api/demo-requests";
+const DEMO_ENDPOINT = window.DEMO_ENDPOINT || "/api/public/enquiries";
 const h = React.createElement;
 const {useState,useEffect} = React;
 
@@ -448,11 +448,17 @@ function ContactPage(){
         ),
         h('div',{className:"bg-white border rounded-xl p-6 shadow-sm"},
           h('h3',{className:"font-semibold"},"Quick contact form"),
-          h('form',{onSubmit:e=>{e.preventDefault(); alert("Message sent — we will respond <4h"); trackConversion('contact_submit');},className:"mt-3 space-y-3"},
-            h('input',{placeholder:"School name *",required:true,className:"w-full h-11 px-3 border rounded"}),
-            h('input',{placeholder:"Your name *",required:true,className:"w-full h-11 px-3 border rounded"}),
-            h('input',{type:"email",placeholder:"Email *",required:true,className:"w-full h-11 px-3 border rounded"}),
-            h('textarea',{placeholder:"What is the biggest headache at term-end? Fees, reports, attendance, messages?",rows:4,className:"w-full px-3 py-2 border rounded"}),
+          h('form',{onSubmit:async e=>{e.preventDefault(); const form=e.currentTarget; const f=new FormData(form);
+              try{
+                const res=await fetch(DEMO_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({schoolName:f.get("schoolName"),contactName:f.get("contactName"),email:f.get("email"),message:f.get("message"),source:"marketing_contact"})});
+                if(!res.ok) throw new Error(`Server ${res.status}`);
+                form.reset(); alert("Message sent. We will reply within 4 working hours."); trackConversion('contact_submit');
+              }catch(err){ alert("Sorry, your message could not be sent. Please email hello@learncloud.co.zw."); }
+            },className:"mt-3 space-y-3"},
+            h('input',{name:"schoolName",placeholder:"School name *",required:true,maxLength:150,className:"w-full h-11 px-3 border rounded"}),
+            h('input',{name:"contactName",placeholder:"Your name *",required:true,maxLength:100,className:"w-full h-11 px-3 border rounded"}),
+            h('input',{name:"email",type:"email",placeholder:"Email *",required:true,maxLength:200,className:"w-full h-11 px-3 border rounded"}),
+            h('textarea',{name:"message",placeholder:"What is the biggest headache at term-end? Fees, reports, attendance, messages?",rows:4,maxLength:2000,className:"w-full px-3 py-2 border rounded"}),
             h('button',{type:"submit",className:"w-full min-h-touch py-3 rounded-lg bg-primary-800 text-white font-semibold"},"Send message")
           )
         )
@@ -468,15 +474,21 @@ function BookDemoPage(){
 
   async function submit(e){
     e.preventDefault();
-    if(!form.schoolName||!form.contactName||!form.email||!form.phone||!form.role||!form.learnerCount){setError("Fill required");setStatus("error");return;}
+    if(!form.schoolName||!form.contactName||!form.email||!form.phone||!form.role||!form.learnerCount){setError("Please fill in every field marked *.");setStatus("error");return;}
+    if(!form.consent){setError("Please tick the box so we can contact you about the demo.");setStatus("error");return;}
     setStatus("loading");setError("");
     try{
-      const res=await fetch(DEMO_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...form,source:"marketing_book_demo",hq:"Bulawayo",timestamp:new Date().toISOString()})});
-      if(!res.ok) throw new Error(`Server ${res.status}`);
+      const res=await fetch(DEMO_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...form,source:"marketing_book_demo"})});
+      if(!res.ok){
+        let msg="Sorry, your request could not be sent. Please email hello@learncloud.co.zw.";
+        try{const b=await res.json(); const first=b&&b.errors&&Object.values(b.errors).flat()[0]; if(res.status===422&&first) msg=first;}catch(_){}
+        if(res.status===429) msg="Too many requests from your network. Please try again later or email hello@learncloud.co.zw.";
+        throw new Error(msg);
+      }
       setStatus("success");
       trackConversion('demo_booking', {school: form.schoolName, learners: form.learnerCount, role: form.role});
       setForm({schoolName:"",contactName:"",role:"",email:"",phone:"",learnerCount:"",currentSystem:"",consent:false});
-    }catch(err){setError(err.message);setStatus("error");}
+    }catch(err){setError(err.name==="TypeError"?"Sorry, your request could not be sent. Please email hello@learncloud.co.zw.":err.message);setStatus("error");}
   }
 
   return h('main',{className:"bg-white"},
@@ -511,7 +523,7 @@ function BookDemoPage(){
             ),
             h('label',{className:"flex gap-2 text-xs text-neutral-600"},h('input',{type:"checkbox",checked:form.consent,onChange:e=>setForm({...form,consent:e.target.checked}),className:"mt-0.5"}),"I agree to be contacted per ZW Data Protection Act 12:07. No spam."),
             h('button',{type:"submit",disabled:status==="loading",className:"w-full min-h-touch py-3 rounded-lg bg-primary-800 text-white font-semibold disabled:opacity-60"},status==="loading"?"Sending...":"Book a demo — free 20 min"),
-            h('p',{className:"text-[11px] text-neutral-400 text-center"},`Posts to ${DEMO_ENDPOINT} (configurable). JSON, success/error states, conversion tracked.`)
+            h('p',{className:"text-[11px] text-neutral-400 text-center"},"We use these details only to arrange your demo.")
           )
         )
       )

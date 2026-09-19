@@ -11,6 +11,7 @@ public static class CommunicationModuleExtensions
         services.AddScoped<ITemplateCategoryService, TemplateCategoryService>();
         services.AddScoped<ITwoWaySmsService, TwoWaySmsService>();
         services.AddScoped<ICommunicationRuleEngine, CommunicationRuleEngine>();
+        services.AddSingleton<LearnCloud.Infrastructure.Jobs.IScheduledJob, CommunicationRulesScheduledJob>();
         return services;
     }
 }

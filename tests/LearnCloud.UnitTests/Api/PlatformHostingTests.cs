@@ -41,18 +41,52 @@ public class DatabaseUrlTests
 
 public class TrustedProxyClientIpMiddlewareTests
 {
-    private static async Task<HttpContext> RunAsync(string? configuredSecret, IDictionary<string, string> headers)
+    private static async Task<HttpContext> RunAsync(string? configuredSecret, IDictionary<string, string> headers, bool requireSecret = false, string path = "/api/students")
     {
         var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { ["Proxy:SharedSecret"] = configuredSecret })
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Proxy:SharedSecret"] = configuredSecret,
+                ["Proxy:RequireSecret"] = requireSecret ? "true" : "false",
+            })
             .Build();
         var context = new DefaultHttpContext();
+        context.Request.Path = path;
+        context.Response.Body = new MemoryStream();
         context.Connection.RemoteIpAddress = IPAddress.Parse("10.0.0.5"); // the proxy's address
         foreach (var (name, value) in headers) context.Request.Headers[name] = value;
 
-        var middleware = new TrustedProxyClientIpMiddleware(_ => Task.CompletedTask, config);
+        var middleware = new TrustedProxyClientIpMiddleware(ctx => { ctx.Items["reached"] = true; return Task.CompletedTask; }, config);
         await middleware.InvokeAsync(context);
         return context;
+    }
+
+    [Fact]
+    public async Task Direct_calls_are_refused_when_the_secret_is_required()
+    {
+        var direct = await RunAsync("proxy-secret-value", new Dictionary<string, string>(), requireSecret: true);
+        Assert.Equal(StatusCodes.Status403Forbidden, direct.Response.StatusCode);
+        Assert.False(direct.Items.ContainsKey("reached"));
+
+        var viaProxy = await RunAsync("proxy-secret-value", new Dictionary<string, string>
+        {
+            [TrustedProxyClientIpMiddleware.SecretHeader] = "proxy-secret-value",
+            [TrustedProxyClientIpMiddleware.ClientIpHeader] = "196.4.10.20",
+        }, requireSecret: true);
+        Assert.True(viaProxy.Items.ContainsKey("reached"));
+
+        // Railway's health check calls the API directly.
+        var health = await RunAsync("proxy-secret-value", new Dictionary<string, string>(), requireSecret: true, path: "/health/ready");
+        Assert.True(health.Items.ContainsKey("reached"));
+    }
+
+    [Fact]
+    public void Requiring_the_secret_without_one_is_a_configuration_error()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Proxy:RequireSecret"] = "true" })
+            .Build();
+        Assert.Throws<InvalidOperationException>(() => new TrustedProxyClientIpMiddleware(_ => Task.CompletedTask, config));
     }
 
     [Fact]

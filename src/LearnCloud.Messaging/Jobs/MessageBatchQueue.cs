@@ -1,28 +1,46 @@
-using System.Threading.Channels;
+using LearnCloud.Infrastructure.Jobs;
 
 namespace LearnCloud.Messaging.Jobs;
 
-// In-process queue of message batches waiting to be sent.
+// Queues message batches for sending as durable background jobs.
 //
-// MessagingController used to start the send with Task.Run, reusing the request's
-// DbContext after the request had ended (the context is disposed by then) and
-// swallowing every exception. Batches are now enqueued here and sent by
-// MessagingQueueWorker, which gives each batch its own DI scope.
-//
-// Queued batches live in memory only; a restart loses the in-flight queue but not the
-// batches, which stay in status Queued in the database. A durable job store is a
-// later-phase decision.
+// Batches used to go into an in-memory channel: a restart lost them (they stayed Queued
+// forever), and only one API instance could send. Batches created by communication rules
+// were never queued at all.
 public interface IMessageBatchQueue
 {
-    ValueTask EnqueueAsync(long batchId, CancellationToken ct = default);
-    IAsyncEnumerable<long> DequeueAllAsync(CancellationToken ct);
+    /// <summary>
+    /// Adds the send job to the current database context; call SaveChanges in the same unit of
+    /// work that marks the batch Queued, so the status and the job are saved together.
+    /// </summary>
+    void Enqueue(long tenantId, long batchId);
 }
 
 public sealed class MessageBatchQueue : IMessageBatchQueue
 {
-    private readonly Channel<long> _channel = Channel.CreateUnbounded<long>(new UnboundedChannelOptions { SingleReader = true });
+    public const string JobKind = "messaging.send_batch";
+    private readonly IBackgroundJobQueue _jobs;
 
-    public ValueTask EnqueueAsync(long batchId, CancellationToken ct = default) => _channel.Writer.WriteAsync(batchId, ct);
+    public MessageBatchQueue(IBackgroundJobQueue jobs) => _jobs = jobs;
 
-    public IAsyncEnumerable<long> DequeueAllAsync(CancellationToken ct) => _channel.Reader.ReadAllAsync(ct);
+    public void Enqueue(long tenantId, long batchId) =>
+        _jobs.Enqueue(JobKind, new SendBatchPayload(batchId), tenantId, maxAttempts: 5);
+}
+
+public sealed record SendBatchPayload(long BatchId);
+
+/// <summary>
+/// Sends a queued batch. Runs in the batch's tenant scope. A batch interrupted part-way
+/// (restart, lost lease) is resumed: only deliveries still Queued are sent.
+/// </summary>
+public sealed class SendMessageBatchJobHandler : IBackgroundJobHandler
+{
+    private readonly MessagingBackgroundJob _job;
+
+    public SendMessageBatchJobHandler(MessagingBackgroundJob job) => _job = job;
+
+    public string Kind => MessageBatchQueue.JobKind;
+
+    public Task HandleAsync(BackgroundJobContext job, CancellationToken ct) =>
+        _job.ProcessBatchAsync(job.Payload<SendBatchPayload>().BatchId, ct);
 }

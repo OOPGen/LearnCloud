@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\LearnCloud.MultiTenancy\LearnCloud.MultiTenancy.csproj" />
+    <ProjectReference Include="..\LearnCloud.Infrastructure\LearnCloud.Infrastructure.csproj" />
     <ProjectReference Include="..\LearnCloud.PlatformBilling\LearnCloud.PlatformBilling.csproj" />
   </ItemGroup>
 

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { forgotPassword, getTenantSlugFromHost, login, registerSchool } from '../lib/apiClient';
+import { passwordProblem } from '../lib/passwords';
 import { Button } from '../components/ui/Button';
 import { Input, PasswordInput } from '../components/ui/Input';
 import { Dialog } from '../components/ui/Dialog';
@@ -69,13 +70,7 @@ function slugify(text) {
   return text.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50);
 }
 
-function passwordProblem(password) {
-  if (!password) return 'Password is required';
-  if (password.length < 8) return 'At least 8 characters';
-  if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password))
-    return 'Use upper and lower case letters, a number and a symbol';
-  return null;
-}
+
 
 export default function LoginSkewed() {
   const navigate = useNavigate();
@@ -90,7 +85,9 @@ export default function LoginSkewed() {
   const [forgotSent, setForgotSent] = useState(false);
   const [toast, setToast] = useState(null);
 
-  const [loginForm, setLoginForm] = useState({ school: '', email: '', password: '' });
+  // Links from emails (verification, password reset) pass the school code and email along.
+  const linkParams = new URLSearchParams(location.search);
+  const [loginForm, setLoginForm] = useState({ school: linkParams.get('school') || '', email: linkParams.get('email') || '', password: '' });
   const [registerForm, setRegisterForm] = useState({ school: '', slug: '', slugEdited: false, name: '', email: '', phone: '', city: 'Bulawayo', band: '150-300', password: '' });
 
   function showToast(type, message, ms = 5000) {
@@ -494,7 +491,7 @@ export default function LoginSkewed() {
         open={showForgot}
         onOpenChange={setShowForgot}
         title="Reset your password"
-        description="We'll send a reset link to your school email. Link expires in 60 minutes and is single-use."
+        description="We'll email you a link to choose a new password. The link can be used only once."
         footer={
           !forgotSent ? (
             <>
@@ -521,14 +518,14 @@ export default function LoginSkewed() {
               autoFocus
             />
             <p className="text-[12px] text-neutral-500">
-              For security, we don&apos;t reveal whether email exists. If account exists, you&apos;ll receive reset link in under 4h CAT (usually minutes).
+              For security, we don&apos;t say whether an account exists. If it does, the email usually arrives within a few minutes.
             </p>
           </div>
         ) : (
           <div className="text-center py-2">
             <div className="w-12 h-12 rounded-full bg-success-50 text-success-600 grid place-items-center mx-auto">✓</div>
             <h3 className="mt-3 font-semibold text-neutral-900">Check your email</h3>
-            <p className="mt-1 text-[14px] text-neutral-600">If <strong>{forgotEmail}</strong> exists, reset link sent. Check spam for hello@learncloud.co.zw.</p>
+            <p className="mt-1 text-[14px] text-neutral-600">If <strong>{forgotEmail}</strong> has an account, we have sent a reset link. Check your spam folder too.</p>
           </div>
         )}
       </Dialog>

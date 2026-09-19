@@ -19,10 +19,11 @@ public class BillingController : ControllerBase
     private readonly LearnCloudDbContext _db;
     private readonly ITenantContext _tenantContext;
     private readonly IBillingService _billingService;
+    private readonly BillingOptions _billing;
 
-    public BillingController(LearnCloudDbContext db, ITenantContext tenantContext, IBillingService billingService)
+    public BillingController(LearnCloudDbContext db, ITenantContext tenantContext, IBillingService billingService, IOptions<BillingOptions> billing)
     {
-        _db = db; _tenantContext = tenantContext; _billingService = billingService;
+        _db = db; _tenantContext = tenantContext; _billingService = billingService; _billing = billing.Value;
     }
 
     private long TenantId => _tenantContext.TenantId ?? throw new InvalidOperationException("No tenant");
@@ -38,21 +39,10 @@ public class BillingController : ControllerBase
         var sub = await _db.Set<Subscription>().Include(s=>s.Plan).FirstOrDefaultAsync(s=>s.TenantId==TenantId && !s.IsDeleted, ct);
         if (sub == null) return NotFound(new { message = "No subscription found" });
 
-        var isReadOnly = sub.State == SubscriptionState.Suspended || sub.State == SubscriptionState.Expired || sub.State == SubscriptionState.PastDue;
-        var banner = "";
-        var paymentLink = $"https://{sub.Tenant.Slug}.learncloud.co.zw/billing/pay";
-
-        if (sub.State == SubscriptionState.Suspended)
-            banner = $"Your account is suspended due to non-payment since {sub.SuspendedSince:yyyy-MM-dd}. You are in read-only mode with a clear banner and payment link. You can view and export your records, but cannot edit. Pay now to reactivate. Never delete data, never lock out entirely. Payment link: {paymentLink}";
-        else if (sub.State == SubscriptionState.Expired)
-            banner = $"Your trial expired on {sub.TrialEndsAt:yyyy-MM-dd}. You are in 30-day read-only window until {sub.ReadOnlyUntil:yyyy-MM-dd} before archival. Pay to keep data. Link: {paymentLink}";
-        else if (sub.State == SubscriptionState.PastDue)
-            banner = $"Your subscription is past due since {sub.PastDueSince:yyyy-MM-dd}. Please pay invoice to avoid suspension in {sub.PastDueGraceDays} days. Link: {paymentLink}";
-        else if (sub.State == SubscriptionState.Trialing)
-        {
-            var daysLeft = sub.TrialEndsAt.HasValue ? (sub.TrialEndsAt.Value - DateTime.UtcNow).Days : 0;
-            banner = $"Trial: {daysLeft} days left, no card required. Reminders at day 7, 12 and expiry. After expiry 30-day read-only window before archival.";
-        }
+        // Read-only status comes from the same rule the API enforces. This used to build a
+        // payment link from sub.Tenant, which was never loaded, so every call failed with 500.
+        var isReadOnly = _billing.EnforceReadOnly && SubscriptionAccess.IsReadOnly(sub.State);
+        var banner = SubscriptionAccess.Banner(sub, _billing.ContactEmail);
 
         return Ok(new
         {
@@ -81,8 +71,8 @@ public class BillingController : ControllerBase
                 sub.PendingPlanEffectiveAt
             },
             isReadOnly,
-            banner = isReadOnly || sub.State==SubscriptionState.Trialing ? banner : null,
-            paymentLink = isReadOnly ? paymentLink : null,
+            banner = string.IsNullOrEmpty(banner) ? null : banner,
+            contactEmail = _billing.ContactEmail,
             canEdit = !isReadOnly
         });
     }
@@ -145,21 +135,22 @@ public class BillingController : ControllerBase
     [ProducesResponseType(200)]
     [ProducesResponseType(401)]
     [ProducesResponseType(403)]
+    // For every signed-in role of the school, not only admins. It used to allow anonymous
+    // callers and take any tenantId from the query string, disclosing any school's billing state.
     [HttpGet("read-only-status")]
-    [AllowAnonymous]
-    public async Task<IActionResult> GetReadOnlyStatus([FromQuery] long? tenantId, CancellationToken ct)
+    public async Task<IActionResult> GetReadOnlyStatus(CancellationToken ct)
     {
-        var tid = tenantId ?? TenantId;
-        var sub = await _db.Set<Subscription>().FirstOrDefaultAsync(s=>s.TenantId==tid && !s.IsDeleted, ct);
-        if (sub == null) return Ok(new { isReadOnly = false });
+        var sub = await _db.Set<Subscription>().FirstOrDefaultAsync(s=>s.TenantId==TenantId && !s.IsDeleted, ct);
+        if (sub == null) return Ok(new { isReadOnly = false, state = (string?)null, banner = (string?)null });
 
-        var isReadOnly = sub.State == SubscriptionState.Suspended || sub.State == SubscriptionState.Expired || sub.State == SubscriptionState.PastDue;
+        var isReadOnly = _billing.EnforceReadOnly && SubscriptionAccess.IsReadOnly(sub.State);
+        var banner = SubscriptionAccess.Banner(sub, _billing.ContactEmail);
         return Ok(new
         {
             isReadOnly,
             state = sub.State.ToString(),
-            banner = isReadOnly ? $"Account {sub.State} - read-only with payment link" : null,
-            paymentLink = isReadOnly ? $"/billing/pay?tenant={tid}" : null,
+            banner = string.IsNullOrEmpty(banner) ? null : banner,
+            contactEmail = _billing.ContactEmail,
             readOnlyUntil = sub.ReadOnlyUntil
         });
     }

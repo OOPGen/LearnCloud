@@ -9,6 +9,8 @@ public static class PlatformBillingModuleExtensions
     {
         services.AddScoped<IBillingService, BillingService>();
         services.AddScoped<DunningJob>();
+        services.AddSingleton<LearnCloud.Infrastructure.Jobs.IScheduledJob, DunningScheduledJob>();
+        services.AddOptions<BillingOptions>().BindConfiguration("Billing");
         return services;
     }
 }

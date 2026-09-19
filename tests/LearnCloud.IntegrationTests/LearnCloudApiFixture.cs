@@ -2,9 +2,13 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
+using LearnCloud.Infrastructure.Email;
+using LearnCloud.Infrastructure.Jobs;
 using LearnCloud.MultiTenancy.Context;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -23,6 +27,9 @@ public sealed class LearnCloudApiFixture : IAsyncLifetime
     public WebApplicationFactory<Program> Factory { get; private set; } = null!;
     public TestSchool SchoolA { get; private set; } = null!;
     public TestSchool SchoolB { get; private set; } = null!;
+    public CapturingEmailDelivery Emails { get; } = new();
+    public const string SalesInbox = "sales@learncloud.test";
+    public const string PublicUrl = "https://app.learncloud.test";
 
     public async Task InitializeAsync()
     {
@@ -35,7 +42,9 @@ public sealed class LearnCloudApiFixture : IAsyncLifetime
             ["Jobs:Enabled"] = "false",
             // Every test calls the API as one of two admins; the production limit of 60 a
             // minute per user would throttle the suite.
-            ["RateLimiting:ApiGeneralPerMinute"] = "5000"
+            ["RateLimiting:ApiGeneralPerMinute"] = "5000",
+            ["Sales:NotificationEmail"] = SalesInbox,
+            ["App:PublicUrl"] = PublicUrl,
         };
 
         Factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -43,6 +52,12 @@ public sealed class LearnCloudApiFixture : IAsyncLifetime
             // "Testing" so developer user-secrets (loaded only in Development) are not used.
             builder.UseEnvironment("Testing");
             foreach (var (key, value) in settings) builder.UseSetting(key, value);
+            // Emails are captured instead of logged, so tests can read links and fail sends.
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IEmailDelivery>();
+                services.AddSingleton<IEmailDelivery>(Emails);
+            });
         });
 
         await using (var scope = Factory.Services.CreateAsyncScope())
@@ -61,7 +76,14 @@ public sealed class LearnCloudApiFixture : IAsyncLifetime
         return client;
     }
 
-    private async Task<TestSchool> RegisterAndLoginAsync(string slug)
+    /// <summary>
+    /// Runs every due background job now (the worker is disabled in tests). Jobs queued by
+    /// other tests may run as well.
+    /// </summary>
+    public Task<int> RunJobsAsync() => Factory.Services.GetRequiredService<BackgroundJobRunner>().RunDueJobsAsync(500, CancellationToken.None);
+
+    /// <summary>Registers a school. Registration allows three per hour per client, and the fixture uses two.</summary>
+    public async Task<(long TenantId, string Email, string Password)> RegisterSchoolAsync(string slug)
     {
         var client = Factory.CreateClient();
         var email = $"admin@{slug}.test";
@@ -75,12 +97,19 @@ public sealed class LearnCloudApiFixture : IAsyncLifetime
         });
         await EnsureSuccessAsync(register, $"register {slug}");
         var registered = await register.Content.ReadFromJsonAsync<JsonElement>();
+        return (registered.GetProperty("tenantId").GetInt64(), email, password);
+    }
+
+    private async Task<TestSchool> RegisterAndLoginAsync(string slug)
+    {
+        var client = Factory.CreateClient();
+        var (tenantId, email, password) = await RegisterSchoolAsync(slug);
 
         var login = await client.PostAsJsonAsync("/api/auth/login", new { Email = email, Password = password, TenantSlug = slug, Device = "integration-test" });
         await EnsureSuccessAsync(login, $"login {slug}");
         var token = (await login.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("accessToken").GetString()!;
 
-        return new TestSchool(slug, registered.GetProperty("tenantId").GetInt64(), token);
+        return new TestSchool(slug, tenantId, token);
     }
 
     public static async Task EnsureSuccessAsync(HttpResponseMessage response, string step)

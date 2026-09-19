@@ -62,7 +62,10 @@ export function useApiErrors() {
       return null;
     }
     if (error instanceof ApiError && error.status === 403) return forbidden;
-    if (error instanceof ApiError && error.status === 402) return 'Your plan does not include this module.';
+    // 402 is either a suspended or expired school (the message says what to do) or a module
+    // outside the school's plan.
+    if (error instanceof ApiError && error.status === 402)
+      return error.code === 'account_read_only' ? `Your school is read-only. ${error.message}` : 'Your plan does not include this module.';
     return error?.message || 'Something went wrong. Please try again.';
   }, [navigate, location]);
 }

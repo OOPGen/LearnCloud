@@ -2,7 +2,8 @@ using LearnCloud.Messaging.Entities;
 
 namespace LearnCloud.Messaging.Services.Providers;
 
-// Provider abstraction: ISmsProvider and IEmailProvider with one concrete implementation each, configured by settings so a provider can be swapped without touching calling code
+// Provider abstraction for the message batch sender. Email goes through the platform's
+// email delivery (LearnCloud.Infrastructure); no SMS provider is integrated yet.
 
 public class SmsMessage
 {
@@ -17,6 +18,8 @@ public class SmsResult
     public bool Success { get; set; }
     public string? ProviderReference { get; set; } // provider's message ID
     public string? FailureReason { get; set; }
+    /// <summary>True when trying again later may succeed (timeouts, rate limits).</summary>
+    public bool IsTransient { get; set; }
     public decimal Cost { get; set; }
     public string Currency { get; set; } = "USD";
 }
@@ -25,7 +28,6 @@ public interface ISmsProvider
 {
     string ProviderName { get; }
     Task<SmsResult> SendAsync(SmsMessage message, CancellationToken ct = default);
-    Task<decimal> GetBalanceAsync(CancellationToken ct = default); // optional
 }
 
 public class EmailMessage
@@ -52,6 +54,8 @@ public class EmailResult
     public bool Success { get; set; }
     public string? ProviderReference { get; set; }
     public string? FailureReason { get; set; }
+    /// <summary>True when trying again later may succeed (timeouts, rate limits).</summary>
+    public bool IsTransient { get; set; }
     public decimal Cost { get; set; }
     public string Currency { get; set; } = "USD";
 }

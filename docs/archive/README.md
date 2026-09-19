@@ -19,6 +19,11 @@ root. They belong to no project and are compiled by nothing. The permission
 catalogue and role seed data in them may be worth reusing when role seeding is
 built for real; nothing references them today.
 
+`SupabaseStorageService.cs` (archived in Phase 5) was in `src/LearnCloud.Api/Services`.
+Nothing registered it: uploads and downloads use local storage in `FilesController`.
+Its Supabase download threw `NotImplementedException`, and Supabase is no longer a
+hosting target.
+
 ## ui-previews/
 
 Two standalone login page mockups. Superseded by `src/LearnCloud.Web`.
