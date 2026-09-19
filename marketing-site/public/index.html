@@ -75,6 +75,10 @@ a:focus-visible,button:focus-visible{outline:2px solid #0F153A;outline-offset:2p
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script>
 const DEMO_ENDPOINT = window.DEMO_ENDPOINT || "/api/public/enquiries";
+// The app is where Home lives: these pages are extra reading, and every one of them must
+// offer the way back. Set window.APP_URL once the custom domain is in use.
+const APP_URL = window.APP_URL || "https://learncloud-app.jeremichaeljunior.workers.dev";
+const APP_HOME = APP_URL + "/#home";
 const h = React.createElement;
 const {useState,useEffect} = React;
 
@@ -129,13 +133,14 @@ function Header({currentPath, navigate}){
   return h('header',{className:"sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-neutral-200 no-print"},
     h('div',{className:"mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between"},
       h('div',{className:"flex items-center gap-2"},
-        h('button',{onClick:()=>navigate('/'),className:"flex items-center gap-2", 'aria-label':"LearnCloud home"},
+        h('a',{href:APP_HOME,className:"flex items-center gap-2", 'aria-label':"LearnCloud home"},
           h('img',{src:"/logo-mark.png",alt:"",className:"w-9 h-9 object-contain"}),
           h('span',{className:"font-bold tracking-tight text-primary-800"},"LearnCloud")
         ),
         h('span',{className:"ml-2 hidden lg:inline-flex text-xs px-2 py-0.5 rounded-full bg-secondary-100 text-secondary-700"},"Bulawayo • 150–2,000 learners")
       ),
       h('nav',{className:"hidden md:flex items-center gap-5 text-sm", 'aria-label':"Main"},
+        h('a',{href:APP_HOME,className:"font-semibold text-primary-800 hover:underline"},"Home"),
         h('a',{href:"/features",onClick:e=>{e.preventDefault();navigate('/features');},className:`hover:text-primary-800 ${currentPath==="/features"?"font-semibold text-primary-800":""}`},"Features"),
         h('a',{href:"/pricing",onClick:e=>{e.preventDefault();navigate('/pricing');},className:`hover:text-primary-800 ${currentPath==="/pricing"?"font-semibold":""}`},"Pricing"),
         h('a',{href:"/about",onClick:e=>{e.preventDefault();navigate('/about');},className:"hover:text-primary-800"},"About"),
@@ -143,15 +148,18 @@ function Header({currentPath, navigate}){
         h('a',{href:"/blog",onClick:e=>{e.preventDefault();navigate('/blog');},className:"hover:text-primary-800"},"Blog")
       ),
       h('div',{className:"flex items-center gap-2"},
+        h('a',{href:APP_URL + "/login",className:"hidden sm:inline-flex min-h-touch h-9 px-3 items-center rounded-md text-sm font-semibold text-primary-800 hover:underline"},"Sign in"),
         h('a',{href:"/book-a-demo",onClick:e=>{e.preventDefault();navigate('/book-a-demo');},className:"hidden sm:inline-flex min-h-touch h-9 px-4 items-center rounded-md bg-primary-800 text-white text-sm font-medium hover:bg-primary-900 focus:ring-2"},"Book a demo"),
         h('button',{onClick:()=>setMobileOpen(!mobileOpen),className:"md:hidden min-w-touch min-h-touch w-11 h-11 grid place-items-center rounded border", 'aria-label':"Menu", 'aria-expanded':mobileOpen}, mobileOpen?"✕":"☰")
       )
     ),
     mobileOpen && h('div',{className:"md:hidden border-t bg-white p-4 space-y-3"},
+      h('a',{href:APP_HOME,className:"block py-2 font-semibold text-primary-800"},"Home"),
       h('a',{href:"/features",onClick:e=>{e.preventDefault();navigate('/features');setMobileOpen(false);},className:"block py-2"},"Features"),
       h('a',{href:"/pricing",onClick:e=>{e.preventDefault();navigate('/pricing');setMobileOpen(false);},className:"block py-2"},"Pricing"),
       h('a',{href:"/about",onClick:e=>{e.preventDefault();navigate('/about');setMobileOpen(false);},className:"block py-2"},"About"),
       h('a',{href:"/help",onClick:e=>{e.preventDefault();navigate('/help');setMobileOpen(false);},className:"block py-2"},"Help Centre"),
+      h('a',{href:APP_URL + "/login",className:"block py-2 font-semibold text-primary-800"},"Sign in"),
       h('a',{href:"/book-a-demo",onClick:e=>{e.preventDefault();navigate('/book-a-demo');setMobileOpen(false);},className:"block w-full text-center py-3 rounded-lg bg-primary-800 text-white font-semibold min-h-touch"},"Book a demo")
     )
   );
@@ -172,6 +180,8 @@ function Footer({navigate}){
         h('div',null,
           h('div',{className:"font-medium text-white"},"Product"),
           h('ul',{className:"mt-3 space-y-2 text-sm"},
+            h('li',null,h('a',{href:APP_HOME,className:"font-semibold text-white hover:underline"},"Home")),
+            h('li',null,h('a',{href:APP_URL + "/login",className:"hover:text-white"},"Sign in")),
             h('li',null,h('a',{href:"/features",onClick:e=>{e.preventDefault();navigate('/features');},className:"hover:text-white focus:underline"},"Features")),
             h('li',null,h('a',{href:"/pricing",onClick:e=>{e.preventDefault();navigate('/pricing');},className:"hover:text-white"},"Pricing")),
             h('li',null,h('a',{href:"/book-a-demo",onClick:e=>{e.preventDefault();navigate('/book-a-demo');},className:"hover:text-white"},"Book a demo")),
