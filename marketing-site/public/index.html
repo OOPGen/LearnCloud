@@ -84,7 +84,7 @@ const ROUTES_SEO = {
   "/features": {title:"Features — Know who owes, reports in an afternoon, message a class at once | LearnCloud",desc:"Every LearnCloud module solves a real headache: fees without asking bursar, report cards in afternoon, attendance in 9 seconds, timetable without clashes, parent messages with read receipts. Screenshots from real schools.",type:"website"},
   "/pricing": {title:"Pricing — What schools pay, how billing works, trial explained | LearnCloud",desc:"Starter $99/mo min 300 learners, Growth $149/mo min 800, Scale $199/mo min 2000. Per learner per term, minimum charge, billable snapshot at term start. 14-day trial no card, 30-day read-only after expiry. No hidden fees.",type:"website"},
   "/about": {title:"About — Built in Bulawayo for independent schools | LearnCloud",desc:"LearnCloud is built in Bulawayo by people who have watched schools chase fees and reports at term-end. We care about accurate records, respectful parent communication, and keeping data in Zimbabwe.",type:"website"},
-  "/contact": {title:"Contact — Talk to someone who knows schools | LearnCloud",desc:"Phone +263 29 123456, WhatsApp +263 77 123 4567, email hello@learncloud.co.zw. HQ Bulawayo, support in CAT, response <4h workday.",type:"website"},
+  "/contact": {title:"Contact — Talk to someone who knows schools | LearnCloud",desc:"Phone +263 71 862 1427, WhatsApp +263 78 623 3766, email hello@learncloud.co.zw. HQ Bulawayo, support in CAT, response <4h workday.",type:"website"},
   "/book-a-demo": {title:"Book a Demo — See LearnCloud on your own data | LearnCloud",desc:"Book a 20-min demo. We use your fee structure and a sample class. No hard sell. School name, contact, role, learner count, current system.",type:"website"},
   "/blog": {title:"Blog — Notes from schools using LearnCloud | LearnCloud",desc:"Practical notes: how Petra High finished reports in an afternoon, how to clean fee arrears, how to set up timetable without clashes.",type:"website"},
   "/privacy": {title:"Privacy — How we handle records of minors | LearnCloud",desc:"Privacy policy: Data Protection Act ZW 12:07, minors data minimisation, encryption, retention 7 years, no marketing resale.",type:"article"},
@@ -183,8 +183,8 @@ function Footer({navigate}){
           h('div',{className:"font-medium text-white"},"Contact — Bulawayo"),
           h('ul',{className:"mt-3 space-y-1 text-sm"},
             h('li',null,"hello@learncloud.co.zw"),
-            h('li',null,"+263 29 123456"),
-            h('li',null,"WhatsApp +263 77 123 4567"),
+            h('li',null,h('a',{href:"tel:+263718621427",className:"hover:text-white"},"+263 71 862 1427")),
+            h('li',null,h('a',{href:"https://wa.me/263786233766",className:"hover:text-white"},"WhatsApp +263 78 623 3766")),
             h('li',null,h('a',{href:"/contact",onClick:e=>{e.preventDefault();navigate('/contact');},className:"hover:text-white underline"},"Contact page"))
           )
         ),
@@ -423,7 +423,7 @@ function AboutPage(){
     ),
     h('section',{className:"py-10 max-w-3xl mx-auto px-4"},
       h('h2',{className:"text-xl font-bold"},"Team — small, focused, reachable"),
-      h('p',{className:"mt-2 text-sm text-neutral-600"},"Founder in Bulawayo, engineers in ZW/SA, support in CAT. Phone +263 29 123456, WhatsApp +263 77 123 4567, email hello@learncloud.co.zw. Response <4h workday."),
+      h('p',{className:"mt-2 text-sm text-neutral-600"},"Founder in Bulawayo, engineers in ZW/SA, support in CAT. Phone +263 71 862 1427, WhatsApp +263 78 623 3766, email hello@learncloud.co.zw. Response <4h workday."),
       h('div',{className:"mt-4 grid sm:grid-cols-3 gap-3"},
         h('div',{className:"p-3 border rounded bg-white"},h('div',{className:"font-medium"},"Product — Bulawayo"),h('div',{className:"text-xs text-neutral-500"},"Loves greyscale legible reports, 44px touch targets")),
         h('div',{className:"p-3 border rounded bg-white"},h('div',{className:"font-medium"},"Engineering — ZW/SA"),h('div',{className:"text-xs text-neutral-500"},"Tenant_id leading indexes, decimal money, audit")),
@@ -442,8 +442,8 @@ function ContactPage(){
           h('p',{className:"mt-3 text-neutral-600"},"For heads, bursars, directors — not developers. Tell us learner count, current system, what hurts at term-end."),
           h('div',{className:"mt-6 space-y-2 text-sm"},
             h('div',null,h('span',{className:"font-medium"},"Email:")," hello@learncloud.co.zw"),
-            h('div',null,h('span',{className:"font-medium"},"Phone:")," +263 29 123456"),
-            h('div',null,h('span',{className:"font-medium"},"WhatsApp:")," +263 77 123 4567"),
+            h('div',null,h('span',{className:"font-medium"},"Phone:")," ",h('a',{href:"tel:+263718621427",className:"underline underline-offset-2"},"+263 71 862 1427")),
+            h('div',null,h('span',{className:"font-medium"},"WhatsApp:")," ",h('a',{href:"https://wa.me/263786233766",className:"underline underline-offset-2"},"+263 78 623 3766")),
             h('div',null,h('span',{className:"font-medium"},"HQ:")," Bulawayo, ZW — remote-first, support in CAT")
           ),
           h('div',{className:"mt-6 p-3 rounded bg-primary-50 border text-sm"},"Response <4h workday. No bots. If trial, we call to help setup wizard 9 steps from empty to usable in 30 min.")
@@ -504,7 +504,7 @@ function BookDemoPage(){
             h('li',{className:"flex gap-2"},"✓ Setup wizard 9 steps, autosaves, resume, time-to-first-invoice 45 min"),
             h('li',{className:"flex gap-2"},"✓ Clear pricing, 14-day trial no card, 30-day read-only after expiry, data never deleted")
           ),
-          h('div',{className:"mt-6 p-3 rounded bg-primary-50 border text-sm"},"HQ Bulawayo — support in CAT. Email hello@learncloud.co.zw • Phone +263 29 123456 • Response <4h. No bots.")
+          h('div',{className:"mt-6 p-3 rounded bg-primary-50 border text-sm"},"HQ Bulawayo — support in CAT. Email hello@learncloud.co.zw • Phone +263 71 862 1427 • Response <4h. No bots.")
         ),
         h('div',{className:"bg-white border rounded-xl p-6 shadow-md"},
           status==="success" && h('div',{className:"mb-4 p-3 rounded bg-success-500/10 border border-success-500/20 text-success-700 text-sm"},"Demo request received! We'll email within 4h CAT. Check spam for hello@learncloud.co.zw."),

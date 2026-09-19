@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom'
 // The marketing site is a separate Worker, so its pages are absolute links. Set
 // VITE_MARKETING_URL at build time once the custom domain is in use.
 const MARKETING = import.meta.env.VITE_MARKETING_URL || 'https://learncloud.jeremichaeljunior.workers.dev'
-// Set VITE_WHATSAPP_NUMBER (digits only, e.g. 263771234567) to link straight to WhatsApp.
-const WHATSAPP = import.meta.env.VITE_WHATSAPP_NUMBER
+// Digits only, no plus. VITE_WHATSAPP_NUMBER overrides it without a code change.
+const WHATSAPP = import.meta.env.VITE_WHATSAPP_NUMBER || '263786233766'
 
 const navLinks = [
   { label: 'Features', href: `${MARKETING}/features` },
@@ -27,8 +27,8 @@ const cards = [
   },
   {
     title: 'WhatsApp',
-    line: WHATSAPP ? 'Chat with us' : 'Talk to us',
-    href: WHATSAPP ? `https://wa.me/${WHATSAPP}` : `${MARKETING}/contact`,
+    line: 'Chat with us',
+    href: `https://wa.me/${WHATSAPP}`,
     className: 'bg-white/90 text-primary-800 border border-white hover:bg-white',
   },
 ]
