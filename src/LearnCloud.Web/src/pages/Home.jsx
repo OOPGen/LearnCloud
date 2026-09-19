@@ -157,11 +157,11 @@ export default function Home() {
 
         <div className="relative flex min-h-screen flex-col justify-center px-4 pb-16 pt-28 sm:px-6 lg:px-10">
           <div className="mx-auto w-full max-w-4xl text-center">
-            <h1 className="text-[34px] font-extrabold leading-[1.1] tracking-[-0.02em] text-white sm:text-[48px] lg:text-[58px]">
-              School management system for Zimbabwean schools
+            <h1 className="text-[32px] font-extrabold leading-[1.12] tracking-[-0.02em] text-white sm:text-[44px] lg:text-[54px]">
+              Transforming School Management and Elevating Education.
             </h1>
-            <p className="mt-5 text-[14px] font-medium uppercase tracking-[0.35em] text-white/75 sm:text-[16px]">
-              Students · Fees · Results
+            <p className="mt-5 text-[13px] font-medium uppercase tracking-[0.3em] text-white/80 sm:text-[16px] sm:tracking-[0.35em]">
+              Simplify. Connect. Empower
             </p>
             <p className="mx-auto mt-5 max-w-2xl text-[16px] leading-relaxed text-white/90 sm:text-[18px]">
               One secure platform for student records, fees, attendance and reports — built in
