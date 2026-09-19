@@ -8,10 +8,12 @@ const MARKETING = import.meta.env.VITE_MARKETING_URL || 'https://learncloud.jere
 const WHATSAPP = import.meta.env.VITE_WHATSAPP_NUMBER || '263786233766'
 const PHONE = import.meta.env.VITE_PHONE_NUMBER || '+263 71 862 1427'
 
-// Sections of this page, in order. "Home" is first so the nav always offers the way back.
+// Sections of this page, in order. Everything the marketing site says lives here too, so a
+// visitor never leaves: "Home" is first, so the nav always offers the way back.
 const sections = [
   { id: 'home', label: 'Home' },
   { id: 'features', label: 'Features' },
+  { id: 'pricing', label: 'Pricing' },
   { id: 'about', label: 'About' },
   { id: 'contact', label: 'Contact' },
 ]
@@ -23,6 +25,36 @@ const features = [
   { title: 'Marks and reports', body: 'Assemble term reports from marks already captured, instead of retyping them.' },
   { title: 'Messages to parents', body: 'Reach a class or the whole school, with a record of what was sent and to whom.' },
   { title: 'Staff and payroll export', body: 'Staff records, and a payroll-ready export for the product that pays them.' },
+]
+
+// Per learner per term, with a minimum charge, as on the pricing page. SMS bundles are
+// deliberately left out: no SMS provider is connected yet, so they cannot be honoured.
+const plans = [
+  {
+    name: 'Starter',
+    perLearner: '$0.50',
+    minimum: '$99',
+    learners: 'Up to 300 learners',
+    bestFor: 'Small primary schools that need registers and records in order.',
+    includes: ['Students and guardians', 'Staff', 'Attendance', 'Academic calendar'],
+  },
+  {
+    name: 'Growth',
+    perLearner: '$1.00',
+    minimum: '$149',
+    learners: '301 to 800 learners',
+    bestFor: 'Schools that need fees, reports and a timetable as well as records.',
+    includes: ['Everything in Starter', 'Fees and invoicing', 'Assessments and report cards', 'Timetable'],
+    featured: true,
+  },
+  {
+    name: 'Scale',
+    perLearner: '$2.00',
+    minimum: '$199',
+    learners: '801 to 2,000 learners',
+    bestFor: 'Larger schools that also communicate with parents and keep full history.',
+    includes: ['Everything in Growth', 'Messaging to parents', 'Admissions', 'Parent and teacher portals'],
+  },
 ]
 
 const promises = [
@@ -69,7 +101,6 @@ export default function Home() {
             {sections.map(s => (
               <a key={s.id} href={`#${s.id}`} className={navLink}>{s.label}</a>
             ))}
-            <a href={`${MARKETING}/pricing`} className={navLink}>Pricing</a>
           </div>
 
           <div className="flex items-center gap-2">
@@ -103,7 +134,6 @@ export default function Home() {
                 {s.label}
               </a>
             ))}
-            <a href={`${MARKETING}/pricing`} className="block border-b border-white/10 py-3 text-[15px] font-semibold text-white/90">Pricing</a>
             <Link to="/login?mode=register" className="mt-4 flex min-h-touch items-center justify-center rounded-xl bg-gradient-to-r from-[#145ced] to-[#7933e8] px-6 font-semibold text-white">
               Get started
             </Link>
@@ -187,6 +217,59 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Pricing */}
+      <section id="pricing" className="scroll-mt-20 bg-neutral-50 px-4 py-20 sm:px-6 lg:px-10">
+        <div className="mx-auto max-w-6xl">
+          <h2 className="text-[28px] font-extrabold tracking-[-0.02em] text-primary-800 sm:text-[36px]">What a school pays</h2>
+          <p className="mt-3 max-w-2xl text-[16px] leading-relaxed text-neutral-600">
+            Per learner, per term, with a minimum charge. The learner count is taken at the
+            start of term, so a learner who joins mid-term is billed next term, not this one.
+          </p>
+
+          <div className="mt-10 grid gap-5 lg:grid-cols-3">
+            {plans.map(plan => (
+              <div
+                key={plan.name}
+                className={`flex flex-col rounded-2xl border p-6 ${plan.featured ? 'border-transparent bg-gradient-to-br from-[#145ced] to-[#7933e8] text-white shadow-xl' : 'border-neutral-200 bg-white'}`}
+              >
+                <div className="flex items-center justify-between">
+                  <h3 className={`text-[19px] font-bold ${plan.featured ? 'text-white' : 'text-neutral-900'}`}>{plan.name}</h3>
+                  {plan.featured && <span className="rounded-full bg-white/20 px-3 py-1 text-[12px] font-semibold">Most chosen</span>}
+                </div>
+                <p className={`mt-4 text-[32px] font-extrabold leading-none ${plan.featured ? 'text-white' : 'text-primary-800'}`}>
+                  {plan.perLearner}
+                  <span className={`ml-1.5 text-[14px] font-medium ${plan.featured ? 'text-white/80' : 'text-neutral-500'}`}>per learner / term</span>
+                </p>
+                <p className={`mt-1.5 text-[14px] ${plan.featured ? 'text-white/85' : 'text-neutral-600'}`}>
+                  Minimum {plan.minimum} a month · {plan.learners}
+                </p>
+                <p className={`mt-4 text-[15px] leading-relaxed ${plan.featured ? 'text-white/90' : 'text-neutral-600'}`}>{plan.bestFor}</p>
+                <ul className={`mt-5 flex-1 space-y-2 text-[14px] ${plan.featured ? 'text-white/90' : 'text-neutral-700'}`}>
+                  {plan.includes.map(item => (
+                    <li key={item} className="flex gap-2">
+                      <span aria-hidden="true" className={plan.featured ? 'text-white' : 'text-[#145ced]'}>✓</span>
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+                <Link
+                  to="/login?mode=register"
+                  className={`mt-6 inline-flex min-h-touch items-center justify-center rounded-xl px-6 font-semibold transition ${plan.featured ? 'bg-white text-primary-800 hover:bg-white/90' : 'bg-primary-800 text-white hover:bg-primary-900'}`}
+                >
+                  Start 14-day trial
+                </Link>
+              </div>
+            ))}
+          </div>
+
+          <p className="mt-8 text-[14px] leading-relaxed text-neutral-600">
+            No card for the trial. When a trial ends without payment the school becomes
+            read-only for 30 days — records stay readable and exportable — rather than being
+            cut off. <a href="#contact" className="font-semibold text-[#145ced] underline underline-offset-4">Ask us anything about billing</a>.
+          </p>
+        </div>
+      </section>
+
       {/* About */}
       <section id="about" className="scroll-mt-20 bg-primary-950 px-4 py-20 text-white sm:px-6 lg:px-10">
         <div className="mx-auto grid max-w-6xl gap-12 lg:grid-cols-2">
@@ -245,8 +328,16 @@ export default function Home() {
       </section>
 
       <footer className="bg-primary-950 px-4 py-10 text-center text-[13px] text-white/60 sm:px-6">
-        <a href="#home" className="font-semibold text-white/80 underline underline-offset-4 hover:text-white">Back to top</a>
-        <p className="mt-3">© {new Date().getFullYear()} LearnCloud · Bulawayo, Zimbabwe</p>
+        <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-center gap-x-5 gap-y-2">
+          <a href="#home" className="font-semibold text-white/80 underline underline-offset-4 hover:text-white">Back to top</a>
+          {/* The longer reads still live on the marketing site; everything a visitor needs to
+              decide is on this page. */}
+          <a href={`${MARKETING}/security`} className="hover:text-white">Security</a>
+          <a href={`${MARKETING}/privacy`} className="hover:text-white">Privacy</a>
+          <a href={`${MARKETING}/blog`} className="hover:text-white">Blog</a>
+          <a href={`${MARKETING}/book-a-demo`} className="hover:text-white">Book a demo</a>
+        </div>
+        <p className="mt-4">© {new Date().getFullYear()} LearnCloud · Bulawayo, Zimbabwe</p>
       </footer>
 
       {/* Appears once the hero is behind you, so the way home is never more than one tap. */}
