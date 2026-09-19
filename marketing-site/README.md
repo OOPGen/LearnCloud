@@ -36,7 +36,8 @@
 
 ## How to Deploy
 
-The site is the Cloudflare Worker `learncloud`: `public/` holds the files and `wrangler.jsonc` serves unknown paths (such as /pricing) from index.html. Deploy from this folder with `npx wrangler@4.131.2 deploy` (docs/DEPLOYMENT.md, section 3).
+The site is the Cloudflare Worker `learncloud`: `public/` holds the files and `wrangler.jsonc` serves unknown paths (such as /pricing) from index.html. Deploy from this folder with `npm ci` then `npm run deploy`, which pins Wrangler for the
+site (docs/DEPLOYMENT.md, section 3).
 
 The demo and contact forms post to `/api/public/enquiries` on the same site; `worker/index.js` forwards them to the API (`API_ORIGIN`, `API_PROXY_SECRET` on the Worker). The API stores them and emails `Sales__NotificationEmail`. Set window.DEMO_ENDPOINT only if the forms should post somewhere else. Before launch, replace gtag ID G-LEARNCLD with real GA4. OG image at /og-image.png — replace with real 1200x630 school image.
 

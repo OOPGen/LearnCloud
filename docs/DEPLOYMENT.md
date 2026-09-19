@@ -139,11 +139,28 @@ missing variable is named in the Worker's log, not shown to visitors.
 
 ### Deploying from GitHub instead (optional)
 
-Workers & Pages → learncloud-app → Settings → Build → Connect: repository
-`OOPGen/LearnCloud`, branch `main`, root directory `src/LearnCloud.Web`, build command
-`npm ci && npm run build`, deploy command `npx wrangler deploy`. Cloudflare then deploys
-every push to `main` without waiting for the CI workflow, so merge to `main` only through
-branches whose CI has passed.
+Workers & Pages → the Worker → Settings → Build → Connect the repository `OOPGen/LearnCloud`.
+**Neither Worker's configuration is at the repository root**, so the root directory matters:
+with root `/`, the build fails at the deploy step with "Missing entry-point to Worker script
+or to assets directory", because there is no `wrangler.jsonc` there.
+
+| Setting | learncloud-app (web app) | learncloud (marketing) |
+|---|---|---|
+| Root directory | `src/LearnCloud.Web` | `marketing-site` |
+| Build command | `npm ci && npm run build` | none (static files, no build step) |
+| Deploy command | `npx wrangler deploy` | `npx wrangler deploy` |
+| Production branch | `main` | `main` |
+
+Cloudflare then deploys every push to the production branch without waiting for the CI
+workflow, so merge to `main` only through branches whose CI has passed. A push to any other
+branch runs `npx wrangler versions upload` instead: it uploads a preview version and does
+**not** change the live site.
+
+Both folders pin Wrangler in their `package.json`, so a build uses the same version as a
+local deploy.
+
+Git builds and `npm run deploy` from a laptop do the same thing. Running both is fine, but
+the last one wins, so prefer one or the other for a given Worker.
 
 ### Domains and school addresses
 
@@ -174,7 +191,8 @@ The demo and contact forms post to `/api/public/enquiries` on the marketing site
 
 ```bash
 cd marketing-site
-npx wrangler@4.131.2 deploy
+npm ci          # once; pins Wrangler for this folder
+npm run deploy
 ```
 
 The analytics ID in `public/index.html` (`G-LEARNCLD`) is still a placeholder.
