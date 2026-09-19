@@ -133,7 +133,9 @@ Set on the Worker (Workers & Pages → learncloud-app → Settings → Variables
 | `ROOT_DOMAIN` | text | `learncloud.co.zw`, only once school subdomains are routed to this Worker |
 
 Until `API_ORIGIN` is set, the app loads but every `/api` call returns
-`502 API not configured`, so nobody can sign in.
+`503 LearnCloud is not connected yet`, so nobody can sign in. That is the expected state
+before the API is deployed, not a failed Worker deploy: the Worker itself is serving. The
+missing variable is named in the Worker's log, not shown to visitors.
 
 ### Deploying from GitHub instead (optional)
 

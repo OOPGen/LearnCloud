@@ -21,7 +21,10 @@ export default {
       return url.pathname.startsWith('/api/') ? problem(404, 'Not found') : env.ASSETS.fetch(request);
     }
     if (request.method !== 'POST') return problem(405, 'Method not allowed');
-    if (!env.API_ORIGIN) return problem(502, 'Form not connected', 'Set API_ORIGIN on the marketing Worker.');
+    if (!env.API_ORIGIN) {
+      console.error('API_ORIGIN is not set on this Worker, so the demo and contact forms cannot be delivered.');
+      return problem(503, 'We cannot receive this yet', 'The form is not connected yet. Please email hello@learncloud.co.zw or WhatsApp +263 78 623 3766.');
+    }
     if (!(request.headers.get('content-type') || '').includes('application/json')) return problem(415, 'Send JSON');
 
     const body = await request.text();
@@ -43,7 +46,7 @@ export default {
         headers: { 'content-type': upstream.headers.get('content-type') || 'application/json' },
       });
     } catch {
-      return problem(502, 'Form unavailable', 'Please try again shortly or email hello@learncloud.co.zw.');
+      return problem(502, 'Form unavailable', 'Please try again shortly, or email hello@learncloud.co.zw or WhatsApp +263 78 623 3766.');
     }
   },
 };

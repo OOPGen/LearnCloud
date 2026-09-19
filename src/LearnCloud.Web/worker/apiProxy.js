@@ -32,9 +32,14 @@ export function tenantSlugFromHost(hostname, rootDomain) {
 
 export async function proxyApiRequest(request, env) {
   if (!env.API_ORIGIN) {
+    // The visitor gets plain language; the fix goes to the Worker log, where it belongs.
+    console.error('API_ORIGIN is not set on this Worker, so every /api request fails.');
     return Response.json(
-      { title: 'API not configured', detail: 'Set API_ORIGIN on the learncloud-app Worker.' },
-      { status: 502, headers: { 'content-type': 'application/problem+json' } },
+      {
+        title: 'LearnCloud is not connected yet',
+        detail: 'This address is live but its server is not connected yet, so signing in is not available. Please try again later.',
+      },
+      { status: 503, headers: { 'content-type': 'application/problem+json', 'retry-after': '3600' } },
     );
   }
 
