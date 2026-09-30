@@ -99,23 +99,16 @@ public class PayNowGateway : IPaymentGateway
         var hash = GenerateSha512(hashInput);
         payload["hash"] = hash;
 
-        // Mock HTTP call - in real, you'd POST and parse response with browserurl, pollurl
-        await Task.Delay(100, ct);
-
-        // Simulate provider returning browserurl for redirect and pollurl for status
-        var gatewayRef = $"PAYNOW-{Guid.NewGuid().ToString()[..8].ToUpper()}";
-        var paymentUrl = $"https://www.paynow.co.zw/interface/payment?guid={gatewayRef}&amount={request.Amount}&method={request.Method}";
-
-        _logger.LogInformation("PayNow initiate: clientRef {ClientRef} amount {Amount} {Currency} method {Method} gatewayRef {GatewayRef}", request.ClientReference, request.Amount, request.Currency, request.Method, gatewayRef);
-
-        // Never log full payload with secrets
+        // The call to PayNow is not written yet: this signed the payload and then invented a
+        // reference and a paynow.co.zw link that leads nowhere. Saying so is better than
+        // handing a parent a broken payment page and recording an initiation for it.
+        await Task.CompletedTask;
+        _logger.LogWarning("Online payment initiation refused: the PayNow integration is not implemented ({ClientRef})", request.ClientReference);
 
         return new InitiatePaymentResult
         {
-            Success = true,
-            PaymentUrl = paymentUrl,
-            GatewayReference = gatewayRef,
-            QrCode = request.Method.ToLower() == "ecocash" ? $"QR-{gatewayRef}" : null
+            Success = false,
+            FailureReason = "Online payment is not available yet. Please pay by the methods on your invoice; the school can record it.",
         };
     }
 
@@ -124,56 +117,37 @@ public class PayNowGateway : IPaymentGateway
         // Treat every webhook as hostile until verified - signature-verified, safe against replay and out-of-order
         // PayNow resulturl POST includes fields: reference, paynowreference, amount, status, pollurl, hash
 
+        // Without the integration key nothing can be verified, so nothing is accepted. This
+        // endpoint is anonymous by necessity - the gateway calls it - so an unverified payload
+        // must never be treated as a payment.
+        if (string.IsNullOrWhiteSpace(_options.IntegrationKey))
+        {
+            _logger.LogError("Payment webhook received but Payments:PayNow:IntegrationKey is not set, so it cannot be verified");
+            return new VerifyWebhookResult { IsValid = false, FailureReason = "Gateway is not configured" };
+        }
+
         try
         {
-            // Parse payload as form-url-encoded or JSON? PayNow sends form-encoded
+            // PayNow posts form-encoded fields: reference, paynowreference, amount, status, pollurl, hash
             var parsed = ParseFormOrJson(request.Payload);
 
-            // Verify hash: hash = SHA512 of concatenated values in alphabetical order? For PayNow: SHA512 of values + integrationKey
-            // Simplified verification
-            var receivedHash = parsed.TryGetValue("hash", out var h) ? h : request.Signature;
-
+            // hash = SHA512(values in key order, excluding hash, + integration key), which only
+            // the gateway can produce. An HMAC of the raw body in the signature header is also
+            // accepted, for gateways that sign that way.
+            var receivedHash = parsed.TryGetValue("hash", out var h) ? h : null;
             var expectedHashInput = string.Join("", parsed.Where(kv => kv.Key != "hash").OrderBy(kv => kv.Key).Select(kv => kv.Value)) + _options.IntegrationKey;
             var expectedHash = GenerateSha512(expectedHashInput);
 
-            // For demo, we also accept payload where hash matches or where signature header matches HMAC
-            bool isValid = false;
-            string? failureReason = null;
+            var hashMatches = !string.IsNullOrEmpty(receivedHash)
+                && CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(receivedHash.ToLowerInvariant()), Encoding.UTF8.GetBytes(expectedHash.ToLowerInvariant()));
+            var signatureMatches = !string.IsNullOrEmpty(request.Signature)
+                && CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(request.Signature.ToLowerInvariant()), Encoding.UTF8.GetBytes(GenerateHmacSha256(request.Payload, _options.IntegrationKey).ToLowerInvariant()));
 
-            if (!string.IsNullOrEmpty(receivedHash) && string.Equals(receivedHash, expectedHash, StringComparison.OrdinalIgnoreCase))
+            if (!hashMatches && !signatureMatches)
             {
-                isValid = true;
-            }
-            else if (!string.IsNullOrEmpty(request.Signature))
-            {
-                // Alternative HMAC verification: HMACSHA256(payload, integrationKey)
-                var hmac = GenerateHmacSha256(request.Payload, _options.IntegrationKey);
-                if (string.Equals(hmac, request.Signature, StringComparison.OrdinalIgnoreCase))
-                {
-                    isValid = true;
-                }
-                else
-                {
-                    failureReason = "Signature mismatch - hostile webhook rejected";
-                }
-            }
-            else
-            {
-                // For local testing without real PayNow, allow if payload contains reference and amount and status
-                if (parsed.ContainsKey("reference") && parsed.ContainsKey("amount"))
-                {
-                    _logger.LogWarning("Webhook without signature allowed in dev mode - in prod require signature!");
-                    isValid = true;
-                }
-                else
-                {
-                    failureReason = "Missing signature and required fields - hostile";
-                }
-            }
-
-            if (!isValid)
-            {
-                return new VerifyWebhookResult { IsValid = false, FailureReason = failureReason ?? "Invalid signature - hostile" };
+                // Never say which part failed: that would help someone guess their way in.
+                _logger.LogWarning("Payment webhook rejected: neither the hash nor the signature matched");
+                return new VerifyWebhookResult { IsValid = false, FailureReason = "Invalid signature - rejected" };
             }
 
             // Extract fields

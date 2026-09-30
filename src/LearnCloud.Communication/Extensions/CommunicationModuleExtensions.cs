@@ -12,6 +12,8 @@ public static class CommunicationModuleExtensions
         services.AddScoped<ITwoWaySmsService, TwoWaySmsService>();
         services.AddScoped<ICommunicationRuleEngine, CommunicationRuleEngine>();
         services.AddSingleton<LearnCloud.Infrastructure.Jobs.IScheduledJob, CommunicationRulesScheduledJob>();
+        // Messaging:InboundSms:WebhookSecret closes or opens the provider webhook.
+        services.AddOptions<InboundSmsOptions>().BindConfiguration("Messaging:InboundSms");
         return services;
     }
 }

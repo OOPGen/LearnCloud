@@ -29,6 +29,8 @@ public sealed class LearnCloudApiFixture : IAsyncLifetime
     public TestSchool SchoolB { get; private set; } = null!;
     public CapturingEmailDelivery Emails { get; } = new();
     public const string SalesInbox = "sales@learncloud.test";
+    /// <summary>The SMS provider's shared secret, so the inbound webhook can be exercised.</summary>
+    public const string InboundSmsSecret = "inbound-sms-secret-for-tests";
     public const string PublicUrl = "https://app.learncloud.test";
 
     public async Task InitializeAsync()
@@ -43,7 +45,11 @@ public sealed class LearnCloudApiFixture : IAsyncLifetime
             // Every test calls the API as one of two admins; the production limit of 60 a
             // minute per user would throttle the suite.
             ["RateLimiting:ApiGeneralPerMinute"] = "5000",
+            // Every test signs in from the same loopback address, so the production limit of
+            // five logins a minute per IP would throttle the suite.
+            ["RateLimiting:LoginPerMinute"] = "5000",
             ["Sales:NotificationEmail"] = SalesInbox,
+            ["Messaging:InboundSms:WebhookSecret"] = InboundSmsSecret,
             ["App:PublicUrl"] = PublicUrl,
         };
 

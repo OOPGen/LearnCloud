@@ -270,6 +270,20 @@ public class OnlinePaymentService : IOnlinePaymentService
             return;
         }
 
+        // The webhook says what was paid, but the school is credited with what was actually
+        // initiated. A payload claiming more than the parent started is left for a human,
+        // rather than clearing invoices on the gateway's word.
+        if (gatewayTx.Amount != initiation.RequestedAmount || !string.Equals(gatewayTx.Currency, initiation.Currency, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning(
+                "Payment webhook for {ClientRef} reported {WebhookAmount} {WebhookCurrency} but the initiation was {InitiatedAmount} {InitiatedCurrency}; left unmatched for reconciliation",
+                gatewayTx.ClientReference, gatewayTx.Amount, gatewayTx.Currency, initiation.RequestedAmount, initiation.Currency);
+            gatewayTx.Status = "unmatched";
+            gatewayTx.FailureReason = "Amount or currency does not match the initiated payment";
+            await _db.SaveChangesAsync(ct);
+            return;
+        }
+
         // Automatic receipt generation and allocation using existing allocation rules - never separate code path
         // Use existing PaymentService.RecordPaymentAsync which uses FeeCalculationService.AllocatePayment FIFO
 
@@ -280,15 +294,15 @@ public class OnlinePaymentService : IOnlinePaymentService
         var outstanding = invoices.Select(i => new Fees.Services.OutstandingInvoice(i.Id, i.InvoiceNumber, i.BalanceDue, i.Currency, i.DueDate, i.IssueDate)).ToList();
 
         var feeCalc = new Fees.Services.FeeCalculationService();
-        var (allocations, credit) = feeCalc.AllocatePayment(gatewayTx.Amount, gatewayTx.Currency, outstanding, null);
+        var (allocations, credit) = feeCalc.AllocatePayment(initiation.RequestedAmount, initiation.Currency, outstanding, null);
 
         // Create payment via existing fee payment entity (manual capture retained for cash, but online also uses same table)
         var payment = new Fees.Entities.Payment
         {
             TenantId = tenantId,
             StudentId = studentId,
-            Amount = Fees.Services.FeeCalculationService.Round2(gatewayTx.Amount),
-            Currency = gatewayTx.Currency,
+            Amount = Fees.Services.FeeCalculationService.Round2(initiation.RequestedAmount),
+            Currency = initiation.Currency,
             Method = Enum.TryParse<Fees.Entities.PaymentMethod>(gatewayTx.Method ?? "Card", true, out var m) ? m : Fees.Entities.PaymentMethod.Card,
             Reference = gatewayTx.GatewayTransactionId,
             PaymentDate = DateTime.UtcNow.Date,

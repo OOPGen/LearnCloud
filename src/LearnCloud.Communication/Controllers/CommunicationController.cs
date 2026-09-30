@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using LearnCloud.Communication.DTOs;
 using LearnCloud.Communication.Entities;
 using LearnCloud.Communication.Services;
@@ -180,20 +182,34 @@ public class CommunicationController : ControllerBase
         return Ok(list);
     }
 
-    // Two-way SMS handling if provider supports it
-    [ProducesResponseType(201)]
+    // Two-way SMS handling if a provider supports it. The SMS provider calls this, so it
+    // cannot carry a user's token: it proves itself with a shared secret instead. Until that
+    // secret is configured the endpoint is closed, because anyone could otherwise post
+    // messages into any school's inbox - it used to name its own tenant in a header, and fall
+    // back to tenant 1.
+    public const string WebhookSecretHeader = "X-LearnCloud-Webhook-Key";
+
+    [ProducesResponseType(200)]
     [ProducesResponseType(400)]
     [ProducesResponseType(401)]
+    [ProducesResponseType(404)]
     [HttpPost("inbound-sms/webhook")]
-    [AllowAnonymous] // provider webhook
-    public async Task<IActionResult> InboundSmsWebhook([FromBody] WebhookInboundSmsRequest req, CancellationToken ct)
+    [AllowAnonymous]
+    public async Task<IActionResult> InboundSmsWebhook([FromBody] WebhookInboundSmsRequest req, IOptions<InboundSmsOptions> options, CancellationToken ct)
     {
-        // Resolve tenant by ToNumber? For V1, use X-Tenant-Id header or domain mapping
-        // For demo, use first tenant or tenant from header
-        var tenantIdHeader = Request.Headers["X-Tenant-Id"].FirstOrDefault();
-        long tenantId = TenantId;
-        if (!string.IsNullOrEmpty(tenantIdHeader) && long.TryParse(tenantIdHeader, out var tid)) tenantId = tid;
-        else if (_tenantContext.TenantId == null) tenantId = 1; // fallback for webhook test
+        var configured = options.Value.WebhookSecret;
+        if (string.IsNullOrWhiteSpace(configured))
+            return NotFound(new { title = "Inbound SMS is not enabled" });
+
+        var presented = Request.Headers[WebhookSecretHeader].FirstOrDefault() ?? "";
+        if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(presented), Encoding.UTF8.GetBytes(configured)))
+            return Unauthorized(new { title = "Invalid webhook key" });
+
+        // The tenant comes from the header only because the caller has proved it is the
+        // provider; it is validated against a real school rather than trusted outright.
+        if (!long.TryParse(Request.Headers["X-Tenant-Id"].FirstOrDefault(), out var tenantId)
+            || !await _db.Tenants.AnyAsync(t => t.Id == tenantId && !t.IsDeleted, ct))
+            return BadRequest(new { title = "X-Tenant-Id must name a school" });
 
         var result = await _twoWayService.HandleInboundAsync(tenantId, req, ct);
         return Ok(result);

@@ -1,9 +1,16 @@
+using LearnCloud.MultiTenancy.Context;
+using LearnCloud.PlatformAdmin.Entities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace LearnCloud.PlatformAdmin.Middleware;
 
-// Access requires platform superadmin role plus second factor
+// The platform console can suspend a school and impersonate its users, so it asks for a code
+// from the operator's authenticator as well as the platform role. The step-up is recorded in
+// the database rather than a session: the API runs on more than one replica, and reading
+// HttpContext.Session here (with no session configured) made every platform request fail
+// with 500 - the console could not be used at all.
 public class SecondFactorMiddleware
 {
     private readonly RequestDelegate _next;
@@ -15,7 +22,7 @@ public class SecondFactorMiddleware
         _logger = logger;
     }
 
-    public async Task InvokeAsync(HttpContext context)
+    public async Task InvokeAsync(HttpContext context, LearnCloudDbContext db)
     {
         // Only apply to platform admin routes
         if (!context.Request.Path.StartsWithSegments("/api/platform") && !context.Request.Path.StartsWithSegments("/api/platform/console"))
@@ -48,9 +55,13 @@ public class SecondFactorMiddleware
             return;
         }
 
-        var is2FaVerified = context.Session.GetString("2fa_verified") == "true";
+        var userId = long.TryParse(user.FindFirst("uid")?.Value ?? user.FindFirst("sub")?.Value, out var uid) ? uid : 0;
+        var stepUpUntil = userId == 0 ? null : await db.Set<PlatformSecondFactor>()
+            .Where(f => f.UserId == userId && !f.IsDeleted)
+            .Select(f => f.StepUpUntil)
+            .FirstOrDefaultAsync();
 
-        if (!is2FaVerified)
+        if (stepUpUntil is null || stepUpUntil <= DateTime.UtcNow)
         {
             _logger.LogWarning("Platform superadmin {User} attempted to access {Path} without second factor", user.Identity?.Name, context.Request.Path);
             context.Response.StatusCode = 403;

@@ -211,6 +211,14 @@ if (args.Contains("--migrate"))
     return;
 }
 
+// `dotnet LearnCloud.Api.dll --create-platform-admin <email>` creates the first platform
+// administrator, with the password in PLATFORM_ADMIN_PASSWORD, and exits.
+if (PlatformAdminBootstrap.IsRequested(args))
+{
+    Environment.ExitCode = await PlatformAdminBootstrap.RunAsync(app, args);
+    return;
+}
+
 // Global exception handler with ProblemDetails
 app.UseExceptionHandler(appBuilder =>
 {

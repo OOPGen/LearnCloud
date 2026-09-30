@@ -119,11 +119,17 @@ public static class AuthModuleExtensions
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = 429;
+            // Five attempts a minute per IP is the brute-force guard production wants. The
+            // integration tests all sign in from the same loopback address, so the suite
+            // exhausted the window and one test failed with 429 depending on ordering;
+            // RateLimiting:LoginPerMinute lets the fixture raise it, as it already does for
+            // api_general. Production keeps the default.
+            var loginPerMinute = config.GetValue("RateLimiting:LoginPerMinute", 5);
             options.AddPolicy("login", httpContext =>
                 RateLimitPartition.GetFixedWindowLimiter(httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                     _ => new FixedWindowRateLimiterOptions
                     {
-                        PermitLimit = 5, Window = TimeSpan.FromSeconds(60), QueueLimit = 0, AutoReplenishment = true
+                        PermitLimit = loginPerMinute, Window = TimeSpan.FromSeconds(60), QueueLimit = 0, AutoReplenishment = true
                     }));
             options.AddPolicy("registration", httpContext =>
                 RateLimitPartition.GetFixedWindowLimiter(httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",

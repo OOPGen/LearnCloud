@@ -1,6 +1,8 @@
 using LearnCloud.MultiTenancy.Context;
 using LearnCloud.PlatformAdmin.DTOs;
+using LearnCloud.PlatformAdmin.Entities;
 using LearnCloud.PlatformAdmin.Services;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
@@ -13,15 +15,22 @@ namespace LearnCloud.PlatformAdmin.Controllers;
 [Authorize(Roles = "PLATFORM_SUPERADMIN")]
 public class PlatformAdminConsoleController : ControllerBase
 {
+    /// <summary>How long the console stays open after a code is accepted.</summary>
+    public const int StepUpMinutes = 30;
+
     private readonly IPlatformAdminService _adminService;
     private readonly IImpersonationService _impersonationService;
     private readonly ITenantContext _tenantContext;
+    private readonly LearnCloudDbContext _db;
+    private readonly ILogger<PlatformAdminConsoleController> _logger;
 
-    public PlatformAdminConsoleController(IPlatformAdminService adminService, IImpersonationService impersonationService, ITenantContext tenantContext)
+    public PlatformAdminConsoleController(IPlatformAdminService adminService, IImpersonationService impersonationService, ITenantContext tenantContext, LearnCloudDbContext db, ILogger<PlatformAdminConsoleController> logger)
     {
         _adminService = adminService;
         _impersonationService = impersonationService;
         _tenantContext = tenantContext;
+        _db = db;
+        _logger = logger;
     }
 
     private long ActorUserId => _tenantContext.ActorUserId ?? long.Parse(User.FindFirst("uid")?.Value ?? "0");
@@ -262,14 +271,47 @@ public class PlatformAdminConsoleController : ControllerBase
     [HttpPost("second-factor/verify")]
     public async Task<IActionResult> VerifySecondFactor([FromBody] VerifySecondFactorRequest req, CancellationToken ct)
     {
-        // In real app, verify TOTP code against secret stored for user
-        // For demo, accept 123456 as valid 2FA code
-        if (req.Code == "123456" || !string.IsNullOrEmpty(req.RecoveryCode))
+        // This used to accept the literal code "123456", or any non-empty recovery code, and
+        // remember the result in a session that was never configured.
+        var userId = long.TryParse(User.FindFirst("uid")?.Value ?? User.FindFirst("sub")?.Value, out var uid) ? uid : 0;
+        var factor = userId == 0 ? null : await _db.Set<PlatformSecondFactor>().FirstOrDefaultAsync(f => f.UserId == userId && !f.IsDeleted, ct);
+        if (factor is null)
+            return BadRequest(new { message = "No authenticator is enrolled for this account. Enrol one when the account is created." });
+
+        if (!Security.Totp.IsValid(factor.Secret, req.Code))
         {
-            HttpContext.Session.SetString("2fa_verified", "true");
-            return Ok(new { message = "Second factor verified" });
+            _logger.LogWarning("Second factor rejected for platform user {UserId}", userId);
+            return Unauthorized(new { message = "Invalid second factor code" });
         }
-        return Unauthorized(new { message = "Invalid second factor code" });
+
+        // A code is good for one step-up only: someone who reads it over a shoulder cannot
+        // reuse it inside the same 30-second window.
+        if (string.Equals(factor.LastAcceptedCode, req.Code, StringComparison.Ordinal))
+            return Unauthorized(new { message = "That code has been used. Wait for the next one." });
+
+        factor.ConfirmedAt ??= DateTime.UtcNow;
+        factor.LastVerifiedAt = DateTime.UtcNow;
+        factor.LastVerifiedIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+        factor.LastAcceptedCode = req.Code;
+        factor.StepUpUntil = DateTime.UtcNow.AddMinutes(StepUpMinutes);
+        await _db.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Second factor accepted for platform user {UserId}; console open for {Minutes} minutes", userId, StepUpMinutes);
+        return Ok(new { message = "Second factor verified", openUntil = factor.StepUpUntil });
+    }
+
+    /// <summary>Ends the step-up, so the console asks for a code again.</summary>
+    [HttpPost("second-factor/end")]
+    public async Task<IActionResult> EndSecondFactor(CancellationToken ct)
+    {
+        var userId = long.TryParse(User.FindFirst("uid")?.Value ?? User.FindFirst("sub")?.Value, out var uid) ? uid : 0;
+        var factor = userId == 0 ? null : await _db.Set<PlatformSecondFactor>().FirstOrDefaultAsync(f => f.UserId == userId && !f.IsDeleted, ct);
+        if (factor is not null)
+        {
+            factor.StepUpUntil = null;
+            await _db.SaveChangesAsync(ct);
+        }
+        return Ok(new { message = "Console locked" });
     }
 }
 
